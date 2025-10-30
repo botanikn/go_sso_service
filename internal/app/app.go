@@ -1,7 +1,6 @@
 package app
 
 import (
-	"google.golang.org/grpc"
 	"log/slog"
 	"time"
 

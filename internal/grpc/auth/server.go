@@ -1,34 +1,36 @@
 package auth
 
 import (
-	ssov1 "github.com/botanikn/go_sso_service/gen/go/sso"
+	ssov1 "github.com/botanikn/protos/gen/go/sso"
+	"google.golang.org/grpc"
+	"context"
 )
 
-type serverServer struct {
-	ssov1.UnimplementedAuthServiceServer
+type serverAPI struct {
+	ssov1.UnimplementedAuthServer
 }
 
 func Register(gRPC *grpc.Server) {
-	ssov1.RegisterAuthServer(gRPC, &serverServer{})
+	ssov1.RegisterAuthServer(gRPC, &serverAPI{})
 }
 
 func (s *serverAPI) Login(
 	ctx context.Context, 
-	req *ssov1.LoginRequest
+	req *ssov1.LoginRequest,
 ) (*ssov1.LoginResponse, error) {
-	pamnic("not implemented")
+	panic("not implemented")
 }
 
 func (s *serverAPI) Register(
 	ctx context.Context, 
-	req *ssov1.RegisterRequest
+	req *ssov1.RegisterRequest,
 ) (*ssov1.RegisterResponse, error) {
-	pamnic("not implemented")
+	panic("not implemented")
 }
 
 func (s *serverAPI) IsAdmin(
 	ctx context.Context, 
-	req *ssov1.IsAdminRequest
+	req *ssov1.IsAdminRequest,
 ) (*ssov1.IsAdminResponse, error) {
-	pamnic("not implemented")
+	panic("not implemented")
 }

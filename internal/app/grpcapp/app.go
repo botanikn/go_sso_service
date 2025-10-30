@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"net"
 
-	authgrpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
+	authgrpc "github.com/botanikn/go_sso_service/internal/grpc/auth"
 )
 
 type App struct {
@@ -56,8 +57,8 @@ func (a *App) Run() error {
 
 func (a *App) Stop() {
 	const op = "grpcapp.Stop"
-	
-	log := a.log.With(slog.String("op", op)).Info("stopping gRPC server", slog.Int("port", a.port))
-	
+
+	a.log.With(slog.String("op", op)).Info("stopping gRPC server", slog.Int("port", a.port))
+
 	a.gRPCServer.GracefulStop()
 }
