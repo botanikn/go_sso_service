@@ -1,0 +1,10 @@
+env: local
+postgres:
+  host: localhost
+  port: 5432
+  user: sso_user
+  password: sso_password
+  dbname: sso_db
+grpc:
+  port: 50051
+  timeout: 10h

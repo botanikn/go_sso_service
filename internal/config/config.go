@@ -1,0 +1,60 @@
+package config
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
+)
+
+type Config struct {
+	Env     string `yaml:"env" env-default:"local"`
+	Postgres PostgresConfig `yaml:"postgres" env-required:"true"`
+	GRPC    GRPCConfig      `yaml:"grpc"`
+}
+
+type PostgresConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Dbname   string `yaml:"dbname"`
+}
+
+type GRPCConfig struct {
+	Port   int           `yaml:"port"`
+	Timeout time.Duration `yaml:"timeout"`
+}
+
+func MustLoad() *Config {
+	path := fetchConfigPath()
+	if path == "" {
+		panic("config path is empty")
+	}
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		panic(fmt.Sprintf("config file does not exist at path: %s", path))
+	}
+
+	var cfg Config
+
+	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
+		panic(fmt.Sprintf("failed to read config file: %v", err.Error()))
+	}
+
+	return &cfg
+}
+
+func fetchConfigPath() string {
+	var res string
+	flag.StringVar(&res, "config", "", "path to config file")
+	flag.Parse()
+
+	if res == "" {
+		res = os.Getenv("SSO_CONFIG_PATH")
+	}
+
+	return res
+}
