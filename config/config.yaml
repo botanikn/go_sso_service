@@ -8,3 +8,4 @@ postgres:
 grpc:
   port: 50051
   timeout: 10h
+token_ttl: 1h

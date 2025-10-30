@@ -13,6 +13,7 @@ type Config struct {
 	Env     string `yaml:"env" env-default:"local"`
 	Postgres PostgresConfig `yaml:"postgres" env-required:"true"`
 	GRPC    GRPCConfig      `yaml:"grpc"`
+	TokenTTL time.Duration   `yaml:"token_ttl"`
 }
 
 type PostgresConfig struct {

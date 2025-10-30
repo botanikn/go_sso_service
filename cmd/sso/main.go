@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"github.com/botanikn/go_sso_service/internal/app"
 
 	"github.com/botanikn/go_sso_service/internal/config"
 )
@@ -17,7 +18,14 @@ func main() {
 
 	log.Debug("Configuration loaded", slog.Any("config", cfg))
 
-	// SSO Service
+	application := app.New(
+		log,
+		cfg.GRPC.Port,
+		&cfg.Postgres,
+		cfg.GRPC.Timeout,
+	)
+
+	application.GRPCSrv.MustRun()
 
 }
 
