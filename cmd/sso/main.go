@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"os"
 	"github.com/botanikn/go_sso_service/internal/app"
+	"os/signal"
+	"syscall"
 
 	"github.com/botanikn/go_sso_service/internal/config"
 )
@@ -25,7 +27,12 @@ func main() {
 		cfg.GRPC.Timeout,
 	)
 
-	application.GRPCSrv.MustRun()
+	go application.GRPCSrv.MustRun()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	<-stop
+	application.GRPCSrv.Stop()
 
 }
 
