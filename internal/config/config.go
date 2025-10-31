@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
-	Env     string `yaml:"env" env-default:"local"`
-	Postgres PostgresConfig `yaml:"postgres" env-required:"true"`
-	GRPC    GRPCConfig      `yaml:"grpc"`
-	TokenTTL time.Duration   `yaml:"token_ttl"`
+	Env      string        `yaml:"env" env-default:"local"`
+	DbConfig DbConfig      `yaml:"db" env-required:"true"`
+	GRPC     GRPCConfig    `yaml:"grpc"`
+	TokenTTL time.Duration `yaml:"token_ttl"`
 }
 
-type PostgresConfig struct {
+type DbConfig struct {
+	Driver   string `yaml:"driver"`
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	User     string `yaml:"user"`
@@ -25,7 +26,7 @@ type PostgresConfig struct {
 }
 
 type GRPCConfig struct {
-	Port   int           `yaml:"port"`
+	Port    int           `yaml:"port"`
 	Timeout time.Duration `yaml:"timeout"`
 }
 

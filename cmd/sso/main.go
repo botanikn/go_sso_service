@@ -3,9 +3,10 @@ package main
 import (
 	"log/slog"
 	"os"
-	"github.com/botanikn/go_sso_service/internal/app"
 	"os/signal"
 	"syscall"
+
+	"github.com/botanikn/go_sso_service/internal/app"
 
 	"github.com/botanikn/go_sso_service/internal/config"
 )
@@ -23,7 +24,7 @@ func main() {
 	application := app.New(
 		log,
 		cfg.GRPC.Port,
-		&cfg.Postgres,
+		&cfg.DbConfig,
 		cfg.GRPC.Timeout,
 	)
 
@@ -31,8 +32,12 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-	<-stop
+
+	syscallSignal := <-stop
+	log.Info("SSO Service stopping by", slog.String("signal", syscallSignal.String()))
 	application.GRPCSrv.Stop()
+
+	log.Info("SSO Service stopped")
 
 }
 

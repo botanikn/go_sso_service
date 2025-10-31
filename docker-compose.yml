@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sso-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sso_user
+      POSTGRES_PASSWORD: sso_password
+      POSTGRES_DB: sso_db
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sso_user -d sso_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+    driver: local
+
+
