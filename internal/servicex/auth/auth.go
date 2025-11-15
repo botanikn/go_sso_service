@@ -23,7 +23,7 @@ type Auth struct {
 }
 
 type UserSaver interface {
-	SaveUser(userID string, email string, passHash []byte) (userId int64, err error)
+	SaveUser(ctx context.Context, email string, passHash []byte) (userId int64, err error)
 }
 
 type UserProvider interface {
@@ -128,7 +128,7 @@ func (a *Auth) Register(
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	userId, err := a.userSaver.SaveUser("", email, passHash)
+	userId, err := a.userSaver.SaveUser(ctx, email, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Warn("user already exists", slog.String("error", err.Error()))

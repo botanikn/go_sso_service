@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	authgrpc "github.com/botanikn/go_sso_service/internal/grpc/auth"
+	"github.com/botanikn/go_sso_service/internal/servicex/auth"
+	"github.com/botanikn/go_sso_service/internal/storage/postgresql"
 	"google.golang.org/grpc"
 )
 
@@ -21,10 +24,13 @@ func New(
 	log *slog.Logger,
 	port int,
 	Db *sql.DB,
+	tokenTTL time.Duration,
 ) *App {
 	gRPCServer := grpc.NewServer()
+	storage := postgresql.New(Db)
+	authService := auth.New(log, storage, storage, storage, tokenTTL)
 
-    authgrpc.Register(gRPCServer, Db)
+	authgrpc.Register(gRPCServer, authService)
 
 	return &App{
 		log:        log,
