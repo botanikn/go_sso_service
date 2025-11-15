@@ -2,10 +2,7 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 
-	"github.com/botanikn/go_sso_service/internal/db"
-	"github.com/botanikn/go_sso_service/internal/entity"
 	ssov1 "github.com/botanikn/protos/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -16,14 +13,27 @@ const (
 	emptyInteger int64 = 0
 )
 
-type serverAPI struct {
-	ssov1.UnimplementedAuthServer
-	repo *db.Repository
+type AuthService interface {
+	Login(ctx context.Context,
+		email string,
+		password string,
+		appId int64,
+	) (token string, err error)
+
+	Register(ctx context.Context,
+		email string,
+		password string,
+	) (userId int64, err error)
+	IsAdmin(ctx context.Context, userId int64) (bool, error)
 }
 
-func Register(gRPC *grpc.Server, DB *sql.DB) {
-	repo := db.NewRepository(DB)
-	ssov1.RegisterAuthServer(gRPC, &serverAPI{repo: repo})
+type serverAPI struct {
+	ssov1.UnimplementedAuthServer
+	auth AuthService
+}
+
+func Register(gRPC *grpc.Server, auth AuthService) {
+	ssov1.RegisterAuthServer(gRPC, &serverAPI{auth: auth})
 }
 
 func (s *serverAPI) Login(
@@ -31,17 +41,18 @@ func (s *serverAPI) Login(
 	req *ssov1.LoginRequest,
 ) (*ssov1.LoginResponse, error) {
 
-	if req.GetEmail() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "email is required")
+	if err := validateLoginRequest(req); err != nil {
+		return nil, err
 	}
-	if req.GetPassword() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "password is required")
+
+	res, err := s.auth.Login(ctx, req.Email, req.Password, req.AppId)
+	if err != nil {
+		// TODO: use more specific error codes
+		return nil, status.Errorf(codes.InvalidArgument, "failed to login: %v", err)
 	}
-	if req.GetAppId() == emptyInteger {
-		return nil, status.Errorf(codes.InvalidArgument, "app_id is required")
-	}
+
 	return &ssov1.LoginResponse{
-		Token: req.Email + "_token",
+		Token: res,
 	}, nil
 }
 
@@ -50,21 +61,14 @@ func (s *serverAPI) Register(
 	req *ssov1.RegisterRequest,
 ) (*ssov1.RegisterResponse, error) {
 
-	if req.GetEmail() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "email is required")
-	}
-	if req.GetPassword() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "password is required")
+	if err := validateRegisterRequest(req); err != nil {
+		return nil, err
 	}
 
-	user := &entity.User{
-		Email:    req.GetEmail(),
-		Password: req.GetPassword(),
-	}
-
-	res, err := s.repo.Create(ctx, user)
+	res, err := s.auth.Register(ctx, req.Email, req.Password)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create user: %v", err)
+		// TODO: use more specific error codes
+		return nil, status.Errorf(codes.InvalidArgument, "failed to register: %v", err)
 	}
 
 	// Сформируйте ответ по вашему контракту
@@ -77,5 +81,47 @@ func (s *serverAPI) IsAdmin(
 	ctx context.Context,
 	req *ssov1.IsAdminRequest,
 ) (*ssov1.IsAdminResponse, error) {
-	panic("not implemented")
+	if err := validateIsAdminRequest(req); err != nil {
+		return nil, err
+	}
+
+	isAdmin, err := s.auth.IsAdmin(ctx, req.UserId)
+	if err != nil {
+		// TODO: use more specific error codes
+		return nil, status.Errorf(codes.InvalidArgument, "failed to check admin status: %v", err)
+	}
+
+	return &ssov1.IsAdminResponse{
+		IsAdmin: isAdmin,
+	}, nil
+}
+
+func validateLoginRequest(req *ssov1.LoginRequest) error {
+	if req.GetEmail() == "" {
+		return status.Errorf(codes.InvalidArgument, "email is required")
+	}
+	if req.GetPassword() == "" {
+		return status.Errorf(codes.InvalidArgument, "password is required")
+	}
+	if req.GetAppId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "app_id is required")
+	}
+	return nil
+}
+
+func validateRegisterRequest(req *ssov1.RegisterRequest) error {
+	if req.GetEmail() == "" {
+		return status.Errorf(codes.InvalidArgument, "email is required")
+	}
+	if req.GetPassword() == "" {
+		return status.Errorf(codes.InvalidArgument, "password is required")
+	}
+	return nil
+}
+
+func validateIsAdminRequest(req *ssov1.IsAdminRequest) error {
+	if req.GetUserId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "user_id is required")
+	}
+	return nil
 }
