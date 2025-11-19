@@ -46,19 +46,19 @@ func (r *Repository) User(ctx context.Context, email string) (models.User, error
 	return user, nil
 }
 
-func (r *Repository) IsAdmin(ctx context.Context, userId int64) (bool, error) {
-	const op = "postgresql.Repository.IsAdmin"
-	query := "SELECT is_admin FROM users WHERE id = $1"
-	row := r.DB.QueryRowContext(ctx, query, userId)
+func (r *Repository) GetPermission(ctx context.Context, userId int64, appId int64) (string, error) {
+	const op = "postgresql.Repository.GetPermission"
+	query := "SELECT permission FROM permissions WHERE user_id = $1 AND app_id = $2"
+	row := r.DB.QueryRowContext(ctx, query, userId, appId)
 
-	var isAdmin bool
-	if err := row.Scan(&isAdmin); err != nil {
+	var permission string
+	if err := row.Scan(&permission); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+			return "", fmt.Errorf("%s: %w", op, storage.ErrNoPermissionFound)
 		}
-		return false, fmt.Errorf("%s: %w", op, err)
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
-	return isAdmin, nil
+	return permission, nil
 }
 
 func (r *Repository) App(ctx context.Context, appId int64) (models.App, error) {

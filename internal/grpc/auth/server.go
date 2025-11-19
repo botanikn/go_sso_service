@@ -24,7 +24,7 @@ type AuthService interface {
 		email string,
 		password string,
 	) (userId int64, err error)
-	IsAdmin(ctx context.Context, userId int64) (bool, error)
+	CheckPermissions(ctx context.Context, userId int64, appId int64) (string, error)
 }
 
 type serverAPI struct {
@@ -77,22 +77,22 @@ func (s *serverAPI) Register(
 	}, nil
 }
 
-func (s *serverAPI) IsAdmin(
+func (s *serverAPI) CheckPermissions(
 	ctx context.Context,
-	req *ssov1.IsAdminRequest,
-) (*ssov1.IsAdminResponse, error) {
+	req *ssov1.PermissionsRequest,
+) (*ssov1.PermissionsResponse, error) {
 	if err := validateIsAdminRequest(req); err != nil {
 		return nil, err
 	}
 
-	isAdmin, err := s.auth.IsAdmin(ctx, req.UserId)
+	permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId)
 	if err != nil {
 		// TODO: use more specific error codes
-		return nil, status.Errorf(codes.InvalidArgument, "failed to check admin status: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
 	}
 
-	return &ssov1.IsAdminResponse{
-		IsAdmin: isAdmin,
+	return &ssov1.PermissionsResponse{
+		Permission: permission,
 	}, nil
 }
 
@@ -119,7 +119,7 @@ func validateRegisterRequest(req *ssov1.RegisterRequest) error {
 	return nil
 }
 
-func validateIsAdminRequest(req *ssov1.IsAdminRequest) error {
+func validateIsAdminRequest(req *ssov1.PermissionsRequest) error {
 	if req.GetUserId() == emptyInteger {
 		return status.Errorf(codes.InvalidArgument, "user_id is required")
 	}

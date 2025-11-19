@@ -1,2 +1,4 @@
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS apps;
+DROP TYPE IF EXISTS permission_type;
+DROP TABLE IF EXISTS permissions;

@@ -28,7 +28,7 @@ func New(
 ) *App {
 	gRPCServer := grpc.NewServer()
 	storage := postgresql.New(Db)
-	authService := auth.New(log, storage, storage, storage, tokenTTL)
+	authService := auth.New(log, storage, storage, storage, storage, tokenTTL)
 
 	authgrpc.Register(gRPCServer, authService)
 

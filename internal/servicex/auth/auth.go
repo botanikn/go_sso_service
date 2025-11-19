@@ -15,11 +15,12 @@ import (
 )
 
 type Auth struct {
-	log          *slog.Logger
-	userSaver    UserSaver
-	userProvider UserProvider
-	appProvider  AppProvider
-	tokenTTL     time.Duration
+	log                *slog.Logger
+	userSaver          UserSaver
+	userProvider       UserProvider
+	appProvider        AppProvider
+	permissionProvider PermissionProvider
+	tokenTTL           time.Duration
 }
 
 type UserSaver interface {
@@ -28,11 +29,14 @@ type UserSaver interface {
 
 type UserProvider interface {
 	User(ctx context.Context, email string) (models.User, error)
-	IsAdmin(ctx context.Context, userId int64) (bool, error)
 }
 
 type AppProvider interface {
 	App(ctx context.Context, appId int64) (models.App, error)
+}
+
+type PermissionProvider interface {
+	GetPermission(ctx context.Context, userId int64, appId int64) (string, error)
 }
 
 var (
@@ -47,14 +51,16 @@ func New(
 	userSaver UserSaver,
 	userProvider UserProvider,
 	appProvider AppProvider,
+	permissionProvider PermissionProvider,
 	tokenTTL time.Duration,
 ) *Auth {
 	return &Auth{
-		log:          log,
-		userSaver:    userSaver,
-		userProvider: userProvider,
-		appProvider:  appProvider,
-		tokenTTL:     tokenTTL,
+		log:                log,
+		userSaver:          userSaver,
+		userProvider:       userProvider,
+		appProvider:        appProvider,
+		permissionProvider: permissionProvider,
+		tokenTTL:           tokenTTL,
 	}
 }
 
@@ -142,30 +148,32 @@ func (a *Auth) Register(
 	return userId, nil
 }
 
-// IsAdmin checks if the user with the given ID has admin privileges and returns the bool result.
-func (a *Auth) IsAdmin(
+// CheckPermissions checks what permissions a user has for a given app.
+func (a *Auth) CheckPermissions(
 	ctx context.Context,
 	userId int64,
-) (bool, error) {
-	const op = "auth.IsAdmin"
+	appId int64,
+) (string, error) {
+	const op = "auth.CheckPermissions"
 
 	log := a.log.With(
 		slog.String("op", op),
 		slog.Int64("userId", userId),
+		slog.Int64("appId", appId),
 	)
 
 	log.Info("checking if user is admin")
 
-	isAdmin, err := a.userProvider.IsAdmin(ctx, userId)
+	permission, err := a.permissionProvider.GetPermission(ctx, userId, appId)
 	if err != nil {
 		if errors.Is(err, storage.ErrAppNotFound) {
 			log.Warn("app not found", slog.String("error", err.Error()))
-			return false, fmt.Errorf("%s: %w", op, ErrInvalidAppID)
+			return "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 		}
 		log.Error("failed to check if user is admin", slog.String("error", err.Error()))
-		return false, fmt.Errorf("%s: %w", op, err)
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("checked if user is admin", slog.Bool("isAdmin", isAdmin))
-	return isAdmin, nil
+	log.Info("checked if user is admin", slog.String("permission", permission))
+	return permission, nil
 }
