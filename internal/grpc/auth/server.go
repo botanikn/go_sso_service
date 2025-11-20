@@ -6,6 +6,7 @@ import (
 	ssov1 "github.com/botanikn/protos/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -24,7 +25,11 @@ type AuthService interface {
 		email string,
 		password string,
 	) (userId int64, err error)
-	CheckPermissions(ctx context.Context, userId int64, appId int64) (string, error)
+	CheckPermissions(ctx context.Context,
+		userId int64,
+		appId int64,
+		token string,
+	) (string, error)
 }
 
 type serverAPI struct {
@@ -82,18 +87,27 @@ func (s *serverAPI) CheckPermissions(
 	ctx context.Context,
 	req *ssov1.PermissionsRequest,
 ) (*ssov1.PermissionsResponse, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "missing metadata")
+	}
+	if _, exists := md["authorization"]; !exists {
+		return nil, status.Error(codes.Unauthenticated, "missing authorization token")
+	}
+	token := md["authorization"]
+
 	if err := validateIsAdminRequest(req); err != nil {
 		return nil, err
 	}
 
-	permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId)
-	if err != nil {
-		// TODO: use more specific error codes
-		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
-	}
+	// permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId, token)
+	// if err != nil {
+	// 	// TODO: use more specific error codes
+	// 	return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
+	// }
 
 	return &ssov1.PermissionsResponse{
-		Permission: permission,
+		Permission: token[0],
 	}, nil
 }
 

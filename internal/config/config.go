@@ -1,7 +1,6 @@
 package config
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -55,8 +54,8 @@ func MustLoad() *Config {
 
 func fetchConfigPath() string {
 	var res string
-	flag.StringVar(&res, "config", "", "path to config file")
-	flag.Parse()
+	// flag.StringVar(&res, "config", "", "path to config file")
+	// flag.Parse()
 
 	if res == "" {
 		res = os.Getenv("SSO_CONFIG_PATH")

@@ -154,6 +154,7 @@ func (a *Auth) CheckPermissions(
 	ctx context.Context,
 	userId int64,
 	appId int64,
+	token string,
 ) (string, error) {
 	const op = "auth.CheckPermissions"
 
@@ -163,7 +164,7 @@ func (a *Auth) CheckPermissions(
 		slog.Int64("appId", appId),
 	)
 
-	log.Info("checking if user is admin")
+	log.Info("checking user's permissions")
 
 	permission, err := a.permissionProvider.GetPermission(ctx, userId, appId)
 	if err != nil {
@@ -171,10 +172,10 @@ func (a *Auth) CheckPermissions(
 			log.Warn("app not found", slog.String("error", err.Error()))
 			return "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 		}
-		log.Error("failed to check if user is admin", slog.String("error", err.Error()))
+		log.Error("failed to check user's permissions", slog.String("error", err.Error()))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("checked if user is admin", slog.String("permission", permission))
+	log.Info("checked user's permissions", slog.String("permission", permission))
 	return permission, nil
 }
