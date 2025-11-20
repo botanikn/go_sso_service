@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"time"
 
+	"github.com/botanikn/go_sso_service/internal/domain/models"
 	ssov1 "github.com/botanikn/protos/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -23,6 +25,7 @@ type AuthService interface {
 
 	Register(ctx context.Context,
 		email string,
+		username string,
 		password string,
 	) (userId int64, err error)
 	CheckPermissions(ctx context.Context,
@@ -30,6 +33,8 @@ type AuthService interface {
 		appId int64,
 		token string,
 	) (string, error)
+	NewToken(user models.User, app models.App, duration time.Duration) (string, error)
+	ValidateToken(ctx context.Context, tokenString string, appId int64) (bool, error)
 }
 
 type serverAPI struct {
@@ -70,19 +75,17 @@ func (s *serverAPI) Register(
 		return nil, err
 	}
 
-	res, err := s.auth.Register(ctx, req.Email, req.Password)
+	res, err := s.auth.Register(ctx, req.Email, req.Username, req.Password)
 	if err != nil {
 		// TODO: use more specific error codes
 		return nil, status.Errorf(codes.InvalidArgument, "failed to register: %v", err)
 	}
 
-	// Сформируйте ответ по вашему контракту
 	return &ssov1.RegisterResponse{
 		UserId: res,
 	}, nil
 }
 
-// COMMENT я так понимаю тут должна быть проверка токена, просто пока не реализованно?
 func (s *serverAPI) CheckPermissions(
 	ctx context.Context,
 	req *ssov1.PermissionsRequest,
@@ -96,18 +99,23 @@ func (s *serverAPI) CheckPermissions(
 	}
 	token := md["authorization"]
 
-	if err := validateIsAdminRequest(req); err != nil {
+	if err := validateCheckPermissionsRequest(req); err != nil {
 		return nil, err
 	}
 
-	// permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId, token)
-	// if err != nil {
-	// 	// TODO: use more specific error codes
-	// 	return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
-	// }
+	valid, err := s.auth.ValidateToken(ctx, token[0], req.AppId)
+	if err != nil || !valid {
+		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	}
+
+	permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId, token[0])
+	if err != nil {
+		// TODO: use more specific error codes
+		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
+	}
 
 	return &ssov1.PermissionsResponse{
-		Permission: token[0],
+		Permission: permission,
 	}, nil
 }
 
@@ -128,15 +136,21 @@ func validateRegisterRequest(req *ssov1.RegisterRequest) error {
 	if req.GetEmail() == "" {
 		return status.Errorf(codes.InvalidArgument, "email is required")
 	}
+	if req.GetUsername() == "" {
+		return status.Errorf(codes.InvalidArgument, "username is required")
+	}
 	if req.GetPassword() == "" {
 		return status.Errorf(codes.InvalidArgument, "password is required")
 	}
 	return nil
 }
 
-func validateIsAdminRequest(req *ssov1.PermissionsRequest) error {
+func validateCheckPermissionsRequest(req *ssov1.PermissionsRequest) error {
 	if req.GetUserId() == emptyInteger {
 		return status.Errorf(codes.InvalidArgument, "user_id is required")
+	}
+	if req.GetAppId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "app_id is required")
 	}
 	return nil
 }

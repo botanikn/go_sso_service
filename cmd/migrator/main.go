@@ -40,8 +40,7 @@ func main() {
 		connStr,
 	)
 	if err != nil {
-		// COMMENT  тут это не крит, но я бы взял за правило никогда не паниковать, log.Fatal всегда лучше, он не выбрасывает панику
-		panic(err)
+		log.Fatal(err)
 	}
 	defer m.Close()
 

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/botanikn/go_sso_service/internal/domain/models"
-	"github.com/botanikn/go_sso_service/internal/lib/jwt"
 	"github.com/botanikn/go_sso_service/internal/storage"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,7 +25,7 @@ type Auth struct {
 
 // COMMENT  UserSaver и UserProvider - это не UserProvider в целом?
 type UserSaver interface {
-	SaveUser(ctx context.Context, email string, passHash []byte) (userId int64, err error)
+	SaveUser(ctx context.Context, email string, username string, passHash []byte) (userId int64, err error)
 }
 
 type UserProvider interface {
@@ -105,7 +105,7 @@ func (a *Auth) Login(
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	token, err := jwt.NewToken(user, app, a.tokenTTL)
+	token, err := a.NewToken(user, app, a.tokenTTL)
 	if err != nil {
 		log.Error("failed to create token", slog.String("error", err.Error()))
 		return "", fmt.Errorf("%s: %w", op, err)
@@ -118,6 +118,7 @@ func (a *Auth) Login(
 func (a *Auth) Register(
 	ctx context.Context,
 	email string,
+	username string,
 	password string,
 ) (int64, error) {
 	const op = "auth.Register"
@@ -135,7 +136,7 @@ func (a *Auth) Register(
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	userId, err := a.userSaver.SaveUser(ctx, email, passHash)
+	userId, err := a.userSaver.SaveUser(ctx, email, username, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Warn("user already exists", slog.String("error", err.Error()))
@@ -178,4 +179,59 @@ func (a *Auth) CheckPermissions(
 
 	log.Info("checked user's permissions", slog.String("permission", permission))
 	return permission, nil
+}
+
+func (a *Auth) NewToken(user models.User, app models.App, duration time.Duration) (string, error) {
+	if duration <= 0 {
+		return "", errors.New("duration must be positive")
+	}
+	if app.Secret == "" {
+		return "", errors.New("app secret is required")
+	}
+
+	claims := jwt.MapClaims{
+		"uid":    user.ID,
+		"email":  user.Email,
+		"exp":    time.Now().Add(duration).Unix(),
+		"app_id": app.ID,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(app.Secret))
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int64) (bool, error) {
+	const op = "auth.ValidateToken"
+
+	app, err := a.appProvider.App(ctx, appId)
+	if err != nil {
+		a.log.Error("failed to find app", slog.String("error", err.Error()))
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+
+	claims := &jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(app.Secret), nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+	if !token.Valid {
+		return false, fmt.Errorf("%s: %w", op, jwt.ErrSignatureInvalid)
+	}
+
+	// Проверка срока действия (если не проверяется автоматически)
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
+		return false, jwt.ErrTokenExpired
+	}
+
+	return true, nil
 }

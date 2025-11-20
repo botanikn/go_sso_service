@@ -8,7 +8,7 @@ import (
 	"time"
 
 	authgrpc "github.com/botanikn/go_sso_service/internal/grpc/auth"
-	"github.com/botanikn/go_sso_service/internal/servicex/auth"
+	"github.com/botanikn/go_sso_service/internal/services/auth"
 	"github.com/botanikn/go_sso_service/internal/storage/postgresql"
 	"google.golang.org/grpc"
 )
