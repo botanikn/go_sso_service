@@ -31,6 +31,7 @@ func (r *Repository) SaveUser(ctx context.Context, email string, passHash []byte
 	return id, nil
 }
 
+// COMMENT  GetUser
 func (r *Repository) User(ctx context.Context, email string) (models.User, error) {
 	const op = "postgresql.Repository.User"
 	query := "SELECT id, email, pass_hash FROM users WHERE email = $1"
@@ -61,6 +62,7 @@ func (r *Repository) GetPermission(ctx context.Context, userId int64, appId int6
 	return permission, nil
 }
 
+// COMMENT GetApp?
 func (r *Repository) App(ctx context.Context, appId int64) (models.App, error) {
 	const op = "postgresql.Repository.App"
 	query := "SELECT id, name FROM apps WHERE id = $1"

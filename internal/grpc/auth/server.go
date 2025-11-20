@@ -77,6 +77,7 @@ func (s *serverAPI) Register(
 	}, nil
 }
 
+// COMMENT я так понимаю тут должна быть проверка токена, просто пока не реализованно?
 func (s *serverAPI) CheckPermissions(
 	ctx context.Context,
 	req *ssov1.PermissionsRequest,

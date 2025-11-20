@@ -23,6 +23,7 @@ type Auth struct {
 	tokenTTL           time.Duration
 }
 
+// COMMENT  UserSaver и UserProvider - это не UserProvider в целом?
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, passHash []byte) (userId int64, err error)
 }

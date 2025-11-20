@@ -18,6 +18,8 @@ func main() {
 	var forceVersion int
 	flag.StringVar(&migrationsPath, "migrationsPath", "", "Path to migrations directory")
 	flag.StringVar(&migrationTable, "migrationTable", "schema_migrations", "Name of migration table")
+	
+	// COMMENT не используется 
 	flag.IntVar(&forceVersion, "forceVersion", -1, "Force set migration version (use to fix dirty state)")
 
 	flag.Parse()
@@ -42,9 +44,12 @@ func main() {
 		connStr,
 	)
 	if err != nil {
+		// COMMENT  тут это не крит, но я бы взял за правило никогда не паниковать, log.Fatal всегда лучше, он не выбрасывает панику
 		panic(err)
 	}
 	defer m.Close()
+
+	// COMMENT такое нужно чистить
 
 	// // If forceVersion is set, force the version to clear dirty state
 	// if forceVersion >= 0 {
