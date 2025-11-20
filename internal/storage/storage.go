@@ -1,5 +1,6 @@
 package storage
 
+// COMMENT  почему файл не называется errors.go
 import "errors"
 
 var (

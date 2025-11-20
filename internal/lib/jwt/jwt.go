@@ -7,6 +7,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// COMMENT можно сделать сервисом. Тебе точно еще понадобиться метод для проверки того, что тебе вернули твой токен, ну и чтоб app не прокидывать каждый раз
+
 func NewToken(user models.User, app models.App, duration time.Duration) (string, error) {
 	token := jwt.New(jwt.SigningMethodES256)
 

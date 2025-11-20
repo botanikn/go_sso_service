@@ -17,7 +17,8 @@ type App struct {
 	log        *slog.Logger
 	gRPCServer *grpc.Server
 	port       int
-	Db         *sql.DB
+	// COMMENT это поле тоже может быть приватным, и в целом зачем его хранить
+	Db *sql.DB
 }
 
 func New(
@@ -42,6 +43,8 @@ func New(
 
 func (a *App) MustRun() {
 	if err := a.Run(); err != nil {
+		// COMMENT  не паникуй все хорошо :)
+		//  лучше на уровень main прокинуть ошибку и там сделать log.Fatal
 		panic(err)
 	}
 }

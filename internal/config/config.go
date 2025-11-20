@@ -16,6 +16,7 @@ type Config struct {
 	TokenTTL time.Duration `yaml:"token_ttl"`
 }
 
+// COMMENT структуру можно сделать приватной, особеность cleanenv, что поля нет, но при этом все равно стоит получать их через методы
 type DbConfig struct {
 	Driver   string `yaml:"driver"`
 	Host     string `yaml:"host"`
@@ -33,16 +34,19 @@ type GRPCConfig struct {
 func MustLoad() *Config {
 	path := fetchConfigPath()
 	if path == "" {
+		// COMMENT  не паникуй
 		panic("config path is empty")
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// COMMENT  не паникуй
 		panic(fmt.Sprintf("config file does not exist at path: %s", path))
 	}
 
 	var cfg Config
 
 	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
+		// COMMENT  не паникуй
 		panic(fmt.Sprintf("failed to read config file: %v", err.Error()))
 	}
 
