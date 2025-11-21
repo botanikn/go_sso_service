@@ -1,0 +1,19 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  migrations_path: ./migrations
+
+tasks:
+  migrationsUp:
+    cmds:
+      - go run ./cmd/migrator --migrationsPath={{.migrations_path}} 
+    silent: true
+  ssoServiceUp:
+    env:
+      SSO_CONFIG_PATH: ./config/config.yaml
+    cmds:
+      - go run ./cmd/sso
+    deps:
+      - task: migrationsUp

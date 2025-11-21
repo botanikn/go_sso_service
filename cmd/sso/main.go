@@ -15,7 +15,7 @@ func main() {
 
 	cfg := config.MustLoad()
 
-	log := setupLogger(cfg.Env)
+	log := setupLogger(cfg.GetEnv())
 
 	log.Info("SSO Service started", slog.Int("port", cfg.GRPC.Port))
 
@@ -28,17 +28,15 @@ func main() {
 		cfg.GRPC.Timeout,
 	)
 
-	go application.GRPCSrv.MustRun()
+	go application.MustRun()
 
-	// COMMENT это уже круто, но еще лучше когда сигнал порождает контекст приложения и передается в MustRun.
-	//  Тогда нет необходимости в этих конструкциях и сервис app сам следит за тем когда ему нужно остановиться,
-	//  как в целом и все остальные запущеные сервисы
+	// TODO: throw througth context with singal
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 
 	syscallSignal := <-stop
 	log.Info("SSO Service stopping by", slog.String("signal", syscallSignal.String()))
-	application.GRPCSrv.Stop()
+	application.Stop()
 
 	log.Info("SSO Service stopped")
 
@@ -46,27 +44,26 @@ func main() {
 
 func setupLogger(env string) *slog.Logger {
 	var log *slog.Logger
-	// COMMENT 1) не нравятся magic strings,
-	// 2) если пользователь твоего приложения  укажет переменную  env = ыварполварп,
-	// то твое приложение упадет с паникой при первом  вызове логгера, что как то не очень правильно,
-	// 3) предложение по улучшению, не тупо тянуть поле env из конфига, а вызывать метод конфига GetEnv,
-	//  который возвращает заранее определенные занчения, если пользователь ввел какую-то ерунду, то на
-	//  этапе инициализации либо уронить приложение, либо поставить дефолт значение
 	switch env {
-	case "local":
+	case config.EnvLocal:
 		log = slog.New(slog.NewTextHandler(
 			os.Stdout,
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		))
-	case "dev":
+	case config.EnvDev:
 		log = slog.New(slog.NewJSONHandler(
 			os.Stdout,
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		))
-	case "prod":
+	case config.EnvProd:
 		log = slog.New(slog.NewJSONHandler(
 			os.Stdout,
 			&slog.HandlerOptions{Level: slog.LevelInfo},
+		))
+	default:
+		log = slog.New(slog.NewJSONHandler(
+			os.Stdout,
+			&slog.HandlerOptions{Level: slog.LevelDebug},
 		))
 	}
 	return log

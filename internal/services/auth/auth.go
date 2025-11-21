@@ -23,7 +23,6 @@ type Auth struct {
 	tokenTTL           time.Duration
 }
 
-// COMMENT  UserSaver и UserProvider - это не UserProvider в целом?
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (userId int64, err error)
 }
@@ -37,7 +36,7 @@ type AppProvider interface {
 }
 
 type PermissionProvider interface {
-	GetPermission(ctx context.Context, userId int64, appId int64) (string, error)
+	Permission(ctx context.Context, userId int64, appId int64) (string, error)
 }
 
 var (
@@ -167,7 +166,7 @@ func (a *Auth) CheckPermissions(
 
 	log.Info("checking user's permissions")
 
-	permission, err := a.permissionProvider.GetPermission(ctx, userId, appId)
+	permission, err := a.permissionProvider.Permission(ctx, userId, appId)
 	if err != nil {
 		if errors.Is(err, storage.ErrAppNotFound) {
 			log.Warn("app not found", slog.String("error", err.Error()))
@@ -228,7 +227,6 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int6
 		return false, fmt.Errorf("%s: %w", op, jwt.ErrSignatureInvalid)
 	}
 
-	// Проверка срока действия (если не проверяется автоматически)
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 		return false, jwt.ErrTokenExpired
 	}

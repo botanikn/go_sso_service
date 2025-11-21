@@ -1,7 +1,8 @@
 package config
 
 import (
-	"fmt"
+	"flag"
+	"log"
 	"os"
 	"time"
 
@@ -33,20 +34,17 @@ type GRPCConfig struct {
 func MustLoad() *Config {
 	path := fetchConfigPath()
 	if path == "" {
-		// COMMENT  не паникуй
-		panic("config path is empty")
+		log.Fatal("config path is empty")
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// COMMENT  не паникуй
-		panic(fmt.Sprintf("config file does not exist at path: %s", path))
+		log.Fatalf("config file does not exist at path: %s", path)
 	}
 
 	var cfg Config
 
 	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
-		// COMMENT  не паникуй
-		panic(fmt.Sprintf("failed to read config file: %v", err.Error()))
+		log.Fatalf("failed to read config file: %v", err.Error())
 	}
 
 	return &cfg
@@ -54,12 +52,25 @@ func MustLoad() *Config {
 
 func fetchConfigPath() string {
 	var res string
-	// flag.StringVar(&res, "config", "", "path to config file")
-	// flag.Parse()
+	flag.StringVar(&res, "config", "", "path to config file")
+	flag.Parse()
 
 	if res == "" {
 		res = os.Getenv("SSO_CONFIG_PATH")
 	}
 
 	return res
+}
+
+func (c *Config) GetEnv() string {
+	switch c.Env {
+	case EnvLocal:
+		return "local"
+	case EnvDev:
+		return "dev"
+	case EnvProd:
+		return "prod"
+	default:
+		return "local"
+	}
 }

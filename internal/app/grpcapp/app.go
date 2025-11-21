@@ -1,15 +1,17 @@
 package grpcapp
 
 import (
-	"database/sql"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"time"
 
+	"github.com/botanikn/go_sso_service/internal/config"
 	authgrpc "github.com/botanikn/go_sso_service/internal/grpc/auth"
 	"github.com/botanikn/go_sso_service/internal/services/auth"
 	"github.com/botanikn/go_sso_service/internal/storage/postgresql"
+	"github.com/botanikn/go_sso_service/pkg/database"
 	"google.golang.org/grpc"
 )
 
@@ -17,18 +19,20 @@ type App struct {
 	log        *slog.Logger
 	gRPCServer *grpc.Server
 	port       int
-	// COMMENT это поле тоже может быть приватным, и в целом зачем его хранить
-	Db *sql.DB
 }
 
 func New(
 	log *slog.Logger,
 	port int,
-	Db *sql.DB,
+	storageCfg *config.DbConfig,
 	tokenTTL time.Duration,
 ) *App {
 	gRPCServer := grpc.NewServer()
-	storage := postgresql.New(Db)
+	db, err := database.NewDB(storageCfg)
+	if err != nil {
+		panic("failed to connect to the database: " + err.Error())
+	}
+	storage := postgresql.New(db)
 	authService := auth.New(log, storage, storage, storage, storage, tokenTTL)
 
 	authgrpc.Register(gRPCServer, authService)
@@ -37,15 +41,12 @@ func New(
 		log:        log,
 		gRPCServer: gRPCServer,
 		port:       port,
-		Db:         Db,
 	}
 }
 
 func (a *App) MustRun() {
 	if err := a.Run(); err != nil {
-		// COMMENT  не паникуй все хорошо :)
-		//  лучше на уровень main прокинуть ошибку и там сделать log.Fatal
-		panic(err)
+		log.Fatal(err)
 	}
 }
 

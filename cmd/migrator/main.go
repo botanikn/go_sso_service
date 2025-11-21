@@ -15,7 +15,7 @@ import (
 
 func main() {
 	var migrationsPath, migrationTable string
-	flag.StringVar(&migrationsPath, "migrationsPath", "", "Path to migrations directory")
+	flag.StringVar(&migrationsPath, "migrationsPath", "migrations", "Path to migrations directory")
 	flag.StringVar(&migrationTable, "migrationTable", "schema_migrations", "Name of migration table")
 
 	flag.Parse()

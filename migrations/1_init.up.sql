@@ -13,7 +13,7 @@ CREATE TABLE apps (
     secret TEXT NOT NULL UNIQUE
 );
 
-CREATE TYPE permission_type AS ENUM ('banned', 'user', 'read', 'write', 'admin');
+CREATE TYPE permission_type AS ENUM ('banned', 'user', 'admin');
 
 CREATE TABLE permissions (
     id SERIAL PRIMARY KEY,
