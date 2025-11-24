@@ -26,7 +26,7 @@ services:
     container_name: sso-service
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "50051:50051"
     depends_on:
       sso_postgres:
         condition: service_healthy
