@@ -9,5 +9,6 @@
 in go_sso_service folder:
 
 1. docker-compose up -d
+2. go mod download
 2. task migrationsUp
 3. task ssoServiceUp
