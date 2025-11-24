@@ -1,1 +1,0 @@
-INSERT INTO permissions (user_id, app_id, permission) VALUES (3, 1, 'write');

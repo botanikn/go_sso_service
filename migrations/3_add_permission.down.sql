@@ -1,1 +1,0 @@
-DELETE FROM permissions WHERE user_id = 3 AND app_id = 1;

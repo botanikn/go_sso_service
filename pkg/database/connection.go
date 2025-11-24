@@ -25,3 +25,25 @@ func NewDB(cfg *config.DbConfig) (*sql.DB, error) {
 
 	return db, nil
 }
+
+type DbConfigInput struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	Dbname   string
+}
+
+func ConvertDbConfig(cfg interface{}) (*config.DbConfig, error) {
+	c, ok := cfg.(DbConfigInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid config type")
+	}
+	return &config.DbConfig{
+		Host:     c.Host,
+		Port:     c.Port,
+		User:     c.User,
+		Password: c.Password,
+		Dbname:   c.Dbname,
+	}, nil
+}
