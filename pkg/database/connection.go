@@ -4,17 +4,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/botanikn/go_sso_service/internal/config"
 	_ "github.com/lib/pq"
 )
 
-func NewDB(cfg *config.DbConfig) (*sql.DB, error) {
+func NewDB(host string, port int, user string, password string, dbname string, driver string) (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%v user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Dbname,
+		host, port, user, password, dbname,
 	)
 
-	db, err := sql.Open(cfg.Driver, connStr)
+	db, err := sql.Open(driver, connStr)
 	if err != nil {
 		return nil, err
 	}
@@ -24,26 +23,4 @@ func NewDB(cfg *config.DbConfig) (*sql.DB, error) {
 	}
 
 	return db, nil
-}
-
-type DbConfigInput struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Dbname   string
-}
-
-func ConvertDbConfig(cfg interface{}) (*config.DbConfig, error) {
-	c, ok := cfg.(DbConfigInput)
-	if !ok {
-		return nil, fmt.Errorf("invalid config type")
-	}
-	return &config.DbConfig{
-		Host:     c.Host,
-		Port:     c.Port,
-		User:     c.User,
-		Password: c.Password,
-		Dbname:   c.Dbname,
-	}, nil
 }

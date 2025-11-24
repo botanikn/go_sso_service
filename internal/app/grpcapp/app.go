@@ -28,7 +28,7 @@ func New(
 	tokenTTL time.Duration,
 ) *App {
 	gRPCServer := grpc.NewServer()
-	db, err := database.NewDB(storageCfg)
+	db, err := database.NewDB(storageCfg.Host, storageCfg.Port, storageCfg.User, storageCfg.Password, storageCfg.Dbname, storageCfg.Driver)
 	if err != nil {
 		panic("failed to connect to the database: " + err.Error())
 	}
