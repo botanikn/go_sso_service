@@ -7,6 +7,8 @@ vars:
 
 tasks:
   migrationsUp:
+    env:
+      SSO_CONFIG_PATH: ./config/config.yaml
     cmds:
       - go run ./cmd/migrator --migrationsPath={{.migrations_path}} 
     silent: true

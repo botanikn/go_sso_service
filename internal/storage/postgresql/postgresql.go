@@ -75,3 +75,13 @@ func (r *Repository) App(ctx context.Context, appId int64) (models.App, error) {
 	}
 	return app, nil
 }
+
+func (r *Repository) CreatePermission(ctx context.Context, userId int64, appId int64, permission string) (bool, error) {
+	const op = "postgresql.Repository.CreatePermission"
+	query := "INSERT INTO permissions (user_id, app_id, permission) VALUES ($1, $2, $3)"
+	_, err := r.DB.ExecContext(ctx, query, userId, appId, permission)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+	return true, nil
+}

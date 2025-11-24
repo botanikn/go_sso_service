@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"time"
 
@@ -20,6 +21,7 @@ type Auth struct {
 	userProvider       UserProvider
 	appProvider        AppProvider
 	permissionProvider PermissionProvider
+	PermissionCreator  PermissionCreator
 	tokenTTL           time.Duration
 }
 
@@ -33,6 +35,10 @@ type UserProvider interface {
 
 type AppProvider interface {
 	App(ctx context.Context, appId int64) (models.App, error)
+}
+
+type PermissionCreator interface {
+	CreatePermission(ctx context.Context, userId int64, appId int64, permission string) (bool, error)
 }
 
 type PermissionProvider interface {
@@ -52,6 +58,7 @@ func New(
 	userProvider UserProvider,
 	appProvider AppProvider,
 	permissionProvider PermissionProvider,
+	PermissionCreator PermissionCreator,
 	tokenTTL time.Duration,
 ) *Auth {
 	return &Auth{
@@ -60,6 +67,7 @@ func New(
 		userProvider:       userProvider,
 		appProvider:        appProvider,
 		permissionProvider: permissionProvider,
+		PermissionCreator:  PermissionCreator,
 		tokenTTL:           tokenTTL,
 	}
 }
@@ -101,6 +109,25 @@ func (a *Auth) Login(
 	app, err := a.appProvider.App(ctx, appId)
 	if err != nil {
 		a.log.Error("failed to get app", slog.String("error", err.Error()))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	userId, err := strconv.ParseInt(user.ID, 10, 64)
+	if err != nil {
+		a.log.Error("failed to parse user ID", slog.String("error", err.Error()))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	_, err = a.permissionProvider.Permission(ctx, userId, appId)
+	if errors.Is(err, storage.ErrNoPermissionFound) {
+		_, err = a.PermissionCreator.CreatePermission(ctx, userId, appId, "user")
+		if err != nil {
+			a.log.Error("failed to create permission", slog.String("error", err.Error()))
+			return "", fmt.Errorf("%s: %w", op, err)
+		}
+		a.log.Debug("permission was successfully made for user", slog.Int64("userId", userId), slog.Int64("appId", appId))
+	}
+	if err != nil {
+		a.log.Error("failed to get user permission", slog.String("error", err.Error()))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 

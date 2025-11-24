@@ -33,7 +33,7 @@ func New(
 		panic("failed to connect to the database: " + err.Error())
 	}
 	storage := postgresql.New(db)
-	authService := auth.New(log, storage, storage, storage, storage, tokenTTL)
+	authService := auth.New(log, storage, storage, storage, storage, storage, tokenTTL)
 
 	authgrpc.Register(gRPCServer, authService)
 
