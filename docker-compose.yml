@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  postgres:
+  sso_postgres:
     image: postgres:16
     container_name: sso-postgres
     restart: unless-stopped
@@ -13,12 +13,26 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sso_user -d sso_db"]
       interval: 5s
       timeout: 3s
       retries: 10
+  sso_service:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: sso-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      sso_postgres:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: ["sh", "-c", "go run ./cmd/migrator && go run ./cmd/sso"]
 
 volumes:
   pgdata:

@@ -1,7 +1,7 @@
 env: local
 db:
   driver: postgres
-  host: localhost
+  host: sso-postgres
   port: 5432
   user: sso_user
   password: sso_password
