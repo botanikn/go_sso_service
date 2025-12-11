@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/botanikn/go_sso_service/internal/domain/models"
+	"github.com/botanikn/go_sso_service/internal/services/auth"
 	ssov1 "github.com/botanikn/protos/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -34,7 +36,7 @@ type AuthService interface {
 		token string,
 	) (string, error)
 	NewToken(user models.User, app models.App, duration time.Duration) (string, error)
-	ValidateToken(ctx context.Context, tokenString string, appId int64) (bool, error)
+	ValidateToken(ctx context.Context, tokenString string, appId int64) (auth.PermissionResponse, error)
 }
 
 type serverAPI struct {
@@ -97,18 +99,21 @@ func (s *serverAPI) CheckPermissions(
 	if _, exists := md["authorization"]; !exists {
 		return nil, status.Error(codes.Unauthenticated, "missing authorization token")
 	}
-	token := md["authorization"]
+	tokenValue := md["authorization"][0]
+	// Remove "Bearer " prefix if present
+	tokenValue = strings.TrimPrefix(tokenValue, "Bearer ")
+	tokenValue = strings.TrimSpace(tokenValue)
 
 	if err := validateCheckPermissionsRequest(req); err != nil {
 		return nil, err
 	}
 
-	valid, err := s.auth.ValidateToken(ctx, token[0], req.AppId)
-	if err != nil || !valid {
-		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	valid, err := s.auth.ValidateToken(ctx, tokenValue, req.AppId)
+	if err != nil || !valid.Validated {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 
-	permission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId, token[0])
+	permission, err := s.auth.CheckPermissions(ctx, valid.UserId, req.AppId, tokenValue)
 	if err != nil {
 		// TODO: use more specific error codes
 		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
@@ -116,6 +121,7 @@ func (s *serverAPI) CheckPermissions(
 
 	return &ssov1.PermissionsResponse{
 		Permission: permission,
+		UserId:     valid.UserId,
 	}, nil
 }
 
@@ -146,9 +152,6 @@ func validateRegisterRequest(req *ssov1.RegisterRequest) error {
 }
 
 func validateCheckPermissionsRequest(req *ssov1.PermissionsRequest) error {
-	if req.GetUserId() == emptyInteger {
-		return status.Errorf(codes.InvalidArgument, "user_id is required")
-	}
 	if req.GetAppId() == emptyInteger {
 		return status.Errorf(codes.InvalidArgument, "app_id is required")
 	}

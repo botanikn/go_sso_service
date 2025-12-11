@@ -51,6 +51,11 @@ var (
 	ErrUserExists         = errors.New("user already exists")
 )
 
+type PermissionResponse struct {
+	Validated bool
+	UserId    int64
+}
+
 // New returns a new instance of Auth service.
 func New(
 	log *slog.Logger,
@@ -231,32 +236,69 @@ func (a *Auth) NewToken(user models.User, app models.App, duration time.Duration
 	return tokenString, nil
 }
 
-func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int64) (bool, error) {
+func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int64) (PermissionResponse, error) {
 	const op = "auth.ValidateToken"
 
 	app, err := a.appProvider.App(ctx, appId)
 	if err != nil {
-		a.log.Error("failed to find app", slog.String("error", err.Error()))
-		return false, fmt.Errorf("%s: %w", op, err)
+		a.log.Error("failed to find app",
+			slog.String("op", op),
+			slog.String("error", err.Error()),
+			slog.Int64("appId", appId))
+		return PermissionResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	claims := &jwt.RegisteredClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+	mapClaims := jwt.MapClaims{}
+	secret := app.Secret // Копируем для безопасности
+
+	_, err = jwt.ParseWithClaims(tokenString, mapClaims, func(token *jwt.Token) (interface{}, error) {
+		// Проверяем алгоритм подписи
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
+			return nil, fmt.Errorf("%s: unexpected signing method: %v", op, token.Header["alg"])
 		}
-		return []byte(app.Secret), nil
+		return []byte(secret), nil
 	})
+
 	if err != nil {
-		return false, fmt.Errorf("%s: %w", op, err)
-	}
-	if !token.Valid {
-		return false, fmt.Errorf("%s: %w", op, jwt.ErrSignatureInvalid)
-	}
-
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
-		return false, jwt.ErrTokenExpired
+		a.log.Error("failed to parse token",
+			slog.String("op", op),
+			slog.String("error", err.Error()))
+		return PermissionResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return true, nil
+	// Проверка exp
+	if exp, ok := mapClaims["exp"].(float64); ok {
+		expTime := time.Unix(int64(exp), 0)
+		if expTime.Before(time.Now()) {
+			return PermissionResponse{}, fmt.Errorf("%s: %w", op, jwt.ErrTokenExpired)
+		}
+	}
+
+	// Проверка обязательных claims
+	uidRaw, ok := mapClaims["uid"]
+	if !ok {
+		return PermissionResponse{}, fmt.Errorf("%s: %w", op, jwt.ErrTokenMalformed)
+	}
+
+	var userId int64
+	switch v := uidRaw.(type) {
+	case string:
+		userId, err = strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return PermissionResponse{}, fmt.Errorf("%s: failed to parse user ID: %w", op, err)
+		}
+	case float64:
+		userId = int64(v)
+	case int64:
+		userId = v
+	case int:
+		userId = int64(v)
+	default:
+		return PermissionResponse{}, fmt.Errorf("%s: invalid user ID type: %T", op, uidRaw)
+	}
+
+	return PermissionResponse{
+		Validated: true,
+		UserId:    userId,
+	}, nil
 }
