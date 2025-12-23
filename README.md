@@ -19,5 +19,5 @@ in go_sso_service folder:
 
 in go_sso_service folder:
 
-2. change db host to sso-postgres
+1. change db host to sso-postgres
 2. docker-compose up -d
