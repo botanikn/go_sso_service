@@ -270,7 +270,10 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int6
 	if exp, ok := mapClaims["exp"].(float64); ok {
 		expTime := time.Unix(int64(exp), 0)
 		if expTime.Before(time.Now()) {
-			return PermissionResponse{}, fmt.Errorf("%s: %w", op, jwt.ErrTokenExpired)
+			a.log.Info("token has expired",
+				slog.String("op", op),
+				slog.Time("exp", expTime))
+			return PermissionResponse{}, jwt.ErrTokenExpired
 		}
 	}
 

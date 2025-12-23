@@ -2,12 +2,14 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/botanikn/go_sso_service/internal/domain/models"
 	"github.com/botanikn/go_sso_service/internal/services/auth"
 	ssov1 "github.com/botanikn/protos/gen/go/sso"
+	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -100,7 +102,7 @@ func (s *serverAPI) CheckPermissions(
 		return nil, status.Error(codes.Unauthenticated, "missing authorization token")
 	}
 	tokenValue := md["authorization"][0]
-	// Remove "Bearer " prefix if present
+
 	tokenValue = strings.TrimPrefix(tokenValue, "Bearer ")
 	tokenValue = strings.TrimSpace(tokenValue)
 
@@ -116,6 +118,9 @@ func (s *serverAPI) CheckPermissions(
 	permission, err := s.auth.CheckPermissions(ctx, valid.UserId, req.AppId, tokenValue)
 	if err != nil {
 		// TODO: use more specific error codes
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, status.Error(codes.Unauthenticated, jwt.ErrTokenExpired.Error())
+		}
 		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
 	}
 
