@@ -22,6 +22,7 @@ type Auth struct {
 	appProvider        AppProvider
 	permissionProvider PermissionProvider
 	PermissionCreator  PermissionCreator
+	PermissionUpdater  PermissionUpdater
 	tokenTTL           time.Duration
 }
 
@@ -39,6 +40,10 @@ type AppProvider interface {
 
 type PermissionCreator interface {
 	CreatePermission(ctx context.Context, userId int64, appId int64, permission string) (bool, error)
+}
+
+type PermissionUpdater interface {
+	UpdatePermission(ctx context.Context, userId int64, appId int64, permission string) error
 }
 
 type PermissionProvider interface {
@@ -64,6 +69,7 @@ func New(
 	appProvider AppProvider,
 	permissionProvider PermissionProvider,
 	PermissionCreator PermissionCreator,
+	PermissionUpdater PermissionUpdater,
 	tokenTTL time.Duration,
 ) *Auth {
 	return &Auth{
@@ -73,6 +79,7 @@ func New(
 		appProvider:        appProvider,
 		permissionProvider: permissionProvider,
 		PermissionCreator:  PermissionCreator,
+		PermissionUpdater:  PermissionUpdater,
 		tokenTTL:           tokenTTL,
 	}
 }
@@ -210,6 +217,32 @@ func (a *Auth) CheckPermissions(
 
 	log.Info("checked user's permissions", slog.String("permission", permission))
 	return permission, nil
+}
+
+func (a *Auth) UpdatePermissions(
+	ctx context.Context,
+	userId int64,
+	appId int64,
+	permission string,
+) error {
+	const op = "auth.UpdatePermissions"
+	log := a.log.With(
+		slog.String("op", op),
+		slog.Int64("userId", userId),
+		slog.Int64("appId", appId),
+		slog.String("permission", permission),
+	)
+
+	log.Info("updating user's permissions")
+
+	err := a.PermissionUpdater.UpdatePermission(ctx, userId, appId, permission)
+	if err != nil {
+		log.Error("failed to update user's permissions", slog.String("error", err.Error()))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("user's permissions updated successfully")
+	return nil
 }
 
 func (a *Auth) NewToken(user models.User, app models.App, duration time.Duration) (string, error) {

@@ -85,3 +85,17 @@ func (r *Repository) CreatePermission(ctx context.Context, userId int64, appId i
 	}
 	return true, nil
 }
+
+func (r *Repository) UpdatePermission(ctx context.Context, userId int64, appId int64, permission string) error {
+	const op = "postgresql.Repository.UpdatePermission"
+	query := "UPDATE permissions SET permission = $1 WHERE user_id = $2 AND app_id = $3"
+	result, err := r.DB.ExecContext(ctx, query, permission, userId, appId)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return nil
+}

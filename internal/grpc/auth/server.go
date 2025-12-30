@@ -37,6 +37,11 @@ type AuthService interface {
 		appId int64,
 		token string,
 	) (string, error)
+	UpdatePermissions(ctx context.Context,
+		userId int64,
+		appId int64,
+		permission string,
+	) error
 	NewToken(user models.User, app models.App, duration time.Duration) (string, error)
 	ValidateToken(ctx context.Context, tokenString string, appId int64) (auth.PermissionResponse, error)
 }
@@ -130,6 +135,48 @@ func (s *serverAPI) CheckPermissions(
 	}, nil
 }
 
+func (s *serverAPI) UpdatePermissions(
+	ctx context.Context,
+	req *ssov1.UpdatePermissionsRequest,
+) (*ssov1.UpdatePermissionsResponse, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "missing metadata")
+	}
+	if _, exists := md["authorization"]; !exists {
+		return nil, status.Error(codes.Unauthenticated, "missing authorization token")
+	}
+	tokenValue := md["authorization"][0]
+
+	tokenValue = strings.TrimPrefix(tokenValue, "Bearer ")
+	tokenValue = strings.TrimSpace(tokenValue)
+
+	valid, err := s.auth.ValidateToken(ctx, tokenValue, req.AppId)
+	if err != nil || !valid.Validated {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+
+	permission, err := s.auth.CheckPermissions(ctx, valid.UserId, req.AppId, tokenValue)
+	if permission != "admin" {
+		return nil, status.Error(codes.PermissionDenied, "insufficient permissions to update user permissions")
+	}
+
+	if err := validateUpdatePermissionsRequest(req); err != nil {
+		return nil, err
+	}
+
+	err = s.auth.UpdatePermissions(ctx, req.UserId, req.AppId, req.Permission)
+	if err != nil {
+		return &ssov1.UpdatePermissionsResponse{
+			Success: false,
+		}, status.Errorf(codes.Internal, "failed to update permissions: %v", err)
+	}
+
+	return &ssov1.UpdatePermissionsResponse{
+		Success: true,
+	}, nil
+}
+
 func validateLoginRequest(req *ssov1.LoginRequest) error {
 	if req.GetEmail() == "" {
 		return status.Errorf(codes.InvalidArgument, "email is required")
@@ -159,6 +206,19 @@ func validateRegisterRequest(req *ssov1.RegisterRequest) error {
 func validateCheckPermissionsRequest(req *ssov1.PermissionsRequest) error {
 	if req.GetAppId() == emptyInteger {
 		return status.Errorf(codes.InvalidArgument, "app_id is required")
+	}
+	return nil
+}
+
+func validateUpdatePermissionsRequest(req *ssov1.UpdatePermissionsRequest) error {
+	if req.GetUserId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "user_id is required")
+	}
+	if req.GetAppId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "app_id is required")
+	}
+	if req.GetPermission() == "" {
+		return status.Errorf(codes.InvalidArgument, "permission is required")
 	}
 	return nil
 }
