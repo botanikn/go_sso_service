@@ -95,10 +95,10 @@ func (s *serverAPI) Register(
 	}, nil
 }
 
-func (s *serverAPI) CheckPermissions(
+func (s *serverAPI) CheckPermissionsByJwt(
 	ctx context.Context,
-	req *ssov1.PermissionsRequest,
-) (*ssov1.PermissionsResponse, error) {
+	req *ssov1.PermissionsByJwtRequest,
+) (*ssov1.PermissionsByJwtResponse, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "missing metadata")
@@ -129,7 +129,7 @@ func (s *serverAPI) CheckPermissions(
 		return nil, status.Errorf(codes.InvalidArgument, "failed to check permissions: %v", err)
 	}
 
-	return &ssov1.PermissionsResponse{
+	return &ssov1.PermissionsByJwtResponse{
 		Permission: permission,
 		UserId:     valid.UserId,
 	}, nil
@@ -177,6 +177,45 @@ func (s *serverAPI) UpdatePermissions(
 	}, nil
 }
 
+func (s *serverAPI) GetPermissionsByUserId(
+	ctx context.Context,
+	req *ssov1.PermissionsByUserIdRequest,
+) (*ssov1.PermissionsByUserIdResponse, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "missing metadata")
+	}
+	if _, exists := md["authorization"]; !exists {
+		return nil, status.Error(codes.Unauthenticated, "missing authorization token")
+	}
+	tokenValue := md["authorization"][0]
+
+	tokenValue = strings.TrimPrefix(tokenValue, "Bearer ")
+	tokenValue = strings.TrimSpace(tokenValue)
+
+	valid, err := s.auth.ValidateToken(ctx, tokenValue, req.AppId)
+	if err != nil || !valid.Validated {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+
+	permission, err := s.auth.CheckPermissions(ctx, valid.UserId, req.AppId, tokenValue)
+	if permission != "admin" {
+		return nil, status.Error(codes.PermissionDenied, "insufficient permissions to update user permissions")
+	}
+
+	if err := validateGetPermissionsByUserIdRequest(req); err != nil {
+		return nil, err
+	}
+	userPermission, err := s.auth.CheckPermissions(ctx, req.UserId, req.AppId, tokenValue)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get user permissions: %v", err)
+	}
+
+	return &ssov1.PermissionsByUserIdResponse{
+		Permission: userPermission,
+	}, nil
+}
+
 func validateLoginRequest(req *ssov1.LoginRequest) error {
 	if req.GetEmail() == "" {
 		return status.Errorf(codes.InvalidArgument, "email is required")
@@ -203,7 +242,7 @@ func validateRegisterRequest(req *ssov1.RegisterRequest) error {
 	return nil
 }
 
-func validateCheckPermissionsRequest(req *ssov1.PermissionsRequest) error {
+func validateCheckPermissionsRequest(req *ssov1.PermissionsByJwtRequest) error {
 	if req.GetAppId() == emptyInteger {
 		return status.Errorf(codes.InvalidArgument, "app_id is required")
 	}
@@ -219,6 +258,16 @@ func validateUpdatePermissionsRequest(req *ssov1.UpdatePermissionsRequest) error
 	}
 	if req.GetPermission() == "" {
 		return status.Errorf(codes.InvalidArgument, "permission is required")
+	}
+	return nil
+}
+
+func validateGetPermissionsByUserIdRequest(req *ssov1.PermissionsByUserIdRequest) error {
+	if req.GetAppId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "app_id is required")
+	}
+	if req.GetUserId() == emptyInteger {
+		return status.Errorf(codes.InvalidArgument, "user_id is required")
 	}
 	return nil
 }

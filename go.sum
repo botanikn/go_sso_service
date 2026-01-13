@@ -16,6 +16,8 @@ github.com/botanikn/protos v0.0.10 h1:M7Al0d8WW3brW+aHIa7RbkOcsXZfFuheXvkRSaGZkH
 github.com/botanikn/protos v0.0.10/go.mod h1:radQr/SNUutHjLBy0ykUfQl8iPIH6Y9Rl5HNi/mKry8=
 github.com/botanikn/protos v0.0.11 h1:AHw6FtsBkR3I0OTOilBSbObFCQuJsfQ1vGAMqS6/37o=
 github.com/botanikn/protos v0.0.11/go.mod h1:radQr/SNUutHjLBy0ykUfQl8iPIH6Y9Rl5HNi/mKry8=
+github.com/botanikn/protos v0.0.12 h1:Xpsr6qCewvSKZ4l8a7cbgzJFH85jRswWqXvJh4tpNmQ=
+github.com/botanikn/protos v0.0.12/go.mod h1:radQr/SNUutHjLBy0ykUfQl8iPIH6Y9Rl5HNi/mKry8=
 github.com/golang-jwt/jwt/v5 v5.3.0 h1:pv4AsKCKKZuqlgs5sUmn4x8UlGa0kEVt/puTpKx9vvo=
 github.com/golang-jwt/jwt/v5 v5.3.0/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/golang-migrate/migrate/v4 v4.19.0 h1:RcjOnCGz3Or6HQYEJ/EEVLfWnmw9KnoigPSjzhCuaSE=
