@@ -14,9 +14,17 @@ import (
 )
 
 func main() {
-	var migrationsPath, migrationTable string
+	var (
+		migrationsPath string
+		migrationTable string
+		dbSchema       string
+		direction      string
+	)
+
 	flag.StringVar(&migrationsPath, "migrationsPath", "migrations", "Path to migrations directory")
 	flag.StringVar(&migrationTable, "migrationTable", "schema_migrations", "Name of migration table")
+	flag.StringVar(&dbSchema, "dbSchema", "", "Database schema name (optional)")
+	flag.StringVar(&direction, "direction", "up", "Migration direction: up or down")
 
 	flag.Parse()
 
@@ -28,12 +36,27 @@ func main() {
 		log.Fatal("migrationTable is required")
 	}
 
+	if direction != "up" && direction != "down" {
+		log.Fatal("direction must be 'up' or 'down'")
+	}
+
 	cfg := config.MustLoad()
 
+	// Формируем connStr с схемой БД
 	connStr := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=disable&x-migrations-table=%s",
-		cfg.DbConfig.User, cfg.DbConfig.Password, cfg.DbConfig.Host, cfg.DbConfig.Port, cfg.DbConfig.Dbname, migrationTable,
+		cfg.DbConfig.User,
+		cfg.DbConfig.Password,
+		cfg.DbConfig.Host,
+		cfg.DbConfig.Port,
+		cfg.DbConfig.Dbname,
+		migrationTable,
 	)
+
+	// Добавляем схему БД, если указана
+	if dbSchema != "" {
+		connStr += fmt.Sprintf("&search_path=%s", dbSchema)
+	}
 
 	m, err := migrate.New(
 		fmt.Sprintf("file://%s", migrationsPath),
@@ -44,13 +67,21 @@ func main() {
 	}
 	defer m.Close()
 
-	if err := m.Up(); err != nil {
-		if errors.Is(err, migrate.ErrNoChange) {
-			fmt.Println("No new migrations to apply")
-			return
-		}
-		panic(err)
+	var migrationErr error
+	switch direction {
+	case "up":
+		migrationErr = m.Up()
+	case "down":
+		migrationErr = m.Down() // Откатывает на 1 миграцию
 	}
 
-	fmt.Println("Migrations applied successfully")
+	if migrationErr != nil {
+		if errors.Is(migrationErr, migrate.ErrNoChange) {
+			fmt.Printf("No %s migrations to apply\n", direction)
+			return
+		}
+		panic(migrationErr)
+	}
+
+	fmt.Printf("Migrations %s applied successfully\n", direction)
 }
