@@ -1,15 +1,11 @@
 # Local development config. Secrets are not stored here:
-# the DB password comes from SSO_DB_PASSWORD (see .env.example).
-# Any db.* value can be overridden with SSO_DB_* env variables.
 env: local
 db:
   driver: postgres
   host: localhost
   port: 5432
-  user: sso_user
-  password: sso_pass
   dbname: sso_db
-  sslmode: disable # local only; use require/verify-full elsewhere
+  sslmode: disable
 grpc:
   port: 50051
   timeout: 10s
