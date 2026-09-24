@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	stdlog "log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -12,6 +13,9 @@ import (
 )
 
 func main() {
+	// config.MustLoad reports errors via the standard logger.
+	stdlog.SetFlags(stdlog.LstdFlags | stdlog.Lshortfile)
+
 	cfg := config.MustLoad()
 
 	log := setupLogger(cfg.Env)
@@ -45,13 +49,14 @@ func main() {
 	log.Info("SSO Service stopped")
 }
 
+// setupLogger returns a logger whose records include the source file and line of the log call.
 func setupLogger(env string) *slog.Logger {
 	switch env {
 	case config.EnvLocal:
-		return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
 	case config.EnvDev:
-		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
 	default:
-		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo, AddSource: true}))
 	}
 }

@@ -12,6 +12,7 @@ var (
 	ErrUserAlreadyExists      = errors.New("user already exists")
 	ErrUserBanned             = errors.New("user is banned")
 	ErrAppDoesNotExist        = errors.New("app does not exist")
+	ErrAppAlreadyExists       = errors.New("app already exists")
 	ErrPermissionDoesNotExist = errors.New("permission does not exist")
 	ErrInvalidToken           = errors.New("invalid token")
 	ErrTokenExpired           = errors.New("token expired")

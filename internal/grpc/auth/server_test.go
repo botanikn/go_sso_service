@@ -27,6 +27,7 @@ func TestToStatus(t *testing.T) {
 		{services.ErrUserBanned, codes.PermissionDenied, "user is banned"},
 		{services.ErrForbidden, codes.PermissionDenied, "insufficient permissions"},
 		{services.ErrUserAlreadyExists, codes.AlreadyExists, "user already exists"},
+		{services.ErrAppAlreadyExists, codes.AlreadyExists, "app already exists"},
 		{services.ErrAppDoesNotExist, codes.NotFound, "app not found"},
 		{services.ErrPermissionDoesNotExist, codes.NotFound, "permission not found"},
 		{errors.New("pq: password authentication failed"), codes.Internal, "internal error"},

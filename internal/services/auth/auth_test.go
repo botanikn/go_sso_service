@@ -254,3 +254,92 @@ func TestUserPermission_RequiresAdmin(t *testing.T) {
 	_, err := authService.UserPermission(context.Background(), testUserId, adminId, testAppId)
 	assert.ErrorIs(t, err, services.ErrForbidden)
 }
+
+const (
+	testAppName   = "New App"
+	testAdminName = "admin"
+)
+
+func TestCreateApp_Success(t *testing.T) {
+	repository, _, authService := setupDependencies()
+
+	repository.On("AppExists", mock.Anything, testAppName).Return(false, nil)
+	repository.On("User", mock.Anything, testEmail).Return(models.User{}, storage.ErrEntityNotFound)
+	repository.On("SaveApp", mock.Anything, testAppName, mock.AnythingOfType("string")).Return(testAppId, nil)
+	repository.On("SaveUser", mock.Anything, testEmail, testAdminName, mock.Anything).Return(adminId, nil)
+	repository.On("EnsurePermission", mock.Anything, adminId, testAppId, models.PermissionAdmin).
+		Return(models.PermissionAdmin, nil)
+
+	appId, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+	require.NoError(t, err)
+	assert.Equal(t, testAppId, appId)
+	repository.AssertExpectations(t)
+}
+
+func TestCreateApp_AppAlreadyExists(t *testing.T) {
+	repository, _, authService := setupDependencies()
+
+	repository.On("AppExists", mock.Anything, testAppName).Return(true, nil)
+
+	_, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+	assert.ErrorIs(t, err, services.ErrAppAlreadyExists)
+	repository.AssertNotCalled(t, "SaveApp", mock.Anything, mock.Anything, mock.Anything)
+	repository.AssertNotCalled(t, "SaveUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCreateApp_AppCreatedConcurrently(t *testing.T) {
+	repository, _, authService := setupDependencies()
+
+	repository.On("AppExists", mock.Anything, testAppName).Return(false, nil)
+	repository.On("User", mock.Anything, testEmail).Return(models.User{}, storage.ErrEntityNotFound)
+	repository.On("SaveApp", mock.Anything, testAppName, mock.Anything).Return(int64(0), storage.ErrEntityExists)
+
+	_, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+	assert.ErrorIs(t, err, services.ErrAppAlreadyExists)
+	repository.AssertNotCalled(t, "SaveUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCreateApp_AdminAlreadyExists(t *testing.T) {
+	repository, _, authService := setupDependencies()
+
+	repository.On("AppExists", mock.Anything, testAppName).Return(false, nil)
+	repository.On("User", mock.Anything, testEmail).Return(testUser(t), nil)
+
+	_, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+	assert.ErrorIs(t, err, services.ErrUserAlreadyExists)
+	repository.AssertNotCalled(t, "SaveApp", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCreateApp_StorageErrors(t *testing.T) {
+	dbErr := errors.New("connection refused")
+
+	t.Run("app exists check", func(t *testing.T) {
+		repository, _, authService := setupDependencies()
+		repository.On("AppExists", mock.Anything, testAppName).Return(false, dbErr)
+
+		_, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+		assert.ErrorIs(t, err, dbErr)
+		repository.AssertNotCalled(t, "SaveApp", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("user exists check", func(t *testing.T) {
+		repository, _, authService := setupDependencies()
+		repository.On("AppExists", mock.Anything, testAppName).Return(false, nil)
+		repository.On("User", mock.Anything, testEmail).Return(models.User{}, dbErr)
+
+		_, err := authService.CreateApp(context.Background(), testAppName, testEmail, testAdminName, testPassword)
+		assert.ErrorIs(t, err, dbErr)
+		assert.NotErrorIs(t, err, services.ErrUserAlreadyExists)
+		repository.AssertNotCalled(t, "SaveApp", mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func TestCreateApp_InvalidAdminCredentials(t *testing.T) {
+	repository, _, authService := setupDependencies()
+
+	_, err := authService.CreateApp(context.Background(), testAppName, "not-an-email", testAdminName, testPassword)
+	var validationErr *services.ValidationError
+	assert.ErrorAs(t, err, &validationErr)
+	repository.AssertNotCalled(t, "AppExists", mock.Anything, mock.Anything)
+	repository.AssertNotCalled(t, "SaveApp", mock.Anything, mock.Anything, mock.Anything)
+}

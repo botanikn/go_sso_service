@@ -208,6 +208,8 @@ func toStatus(err error) error {
 		return status.Error(codes.PermissionDenied, "insufficient permissions")
 	case errors.Is(err, services.ErrUserAlreadyExists):
 		return status.Error(codes.AlreadyExists, "user already exists")
+	case errors.Is(err, services.ErrAppAlreadyExists):
+		return status.Error(codes.AlreadyExists, "app already exists")
 	case errors.Is(err, services.ErrAppDoesNotExist):
 		return status.Error(codes.NotFound, "app not found")
 	case errors.Is(err, services.ErrPermissionDoesNotExist):

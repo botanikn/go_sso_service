@@ -65,6 +65,17 @@ func (r *Repository) App(ctx context.Context, appId int64) (models.App, error) {
 	return app, nil
 }
 
+func (r *Repository) AppExists(ctx context.Context, name string) (bool, error) {
+	const op = "postgresql.Repository.AppExists"
+	query := "SELECT EXISTS (SELECT 1 FROM apps WHERE name = $1)"
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, name).Scan(&exists); err != nil {
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+	return exists, nil
+}
+
 func (r *Repository) SaveApp(ctx context.Context, name string, secret string) (int64, error) {
 	const op = "postgresql.Repository.SaveApp"
 	query := "INSERT INTO apps (name, secret) VALUES ($1, $2) RETURNING id"

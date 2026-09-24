@@ -42,6 +42,7 @@ type UserStorage interface {
 
 type AppProvider interface {
 	App(ctx context.Context, appId int64) (models.App, error)
+	AppExists(ctx context.Context, name string) (bool, error)
 	SaveApp(ctx context.Context, name string, secret string) (int64, error)
 }
 
@@ -270,6 +271,8 @@ func (a *Auth) UpdatePermission(
 	return nil
 }
 
+// CreateApp creates an app and registers a new user as its admin. It fails if the app
+// name or the admin email is already taken.
 func (a *Auth) CreateApp(ctx context.Context, app_name string, admin_mail string, admin_name string, admin_pass string) (appId int64, err error) {
 	const op = "auth.CreateApp"
 
@@ -280,6 +283,31 @@ func (a *Auth) CreateApp(ctx context.Context, app_name string, admin_mail string
 		slog.String("admin_name", admin_name),
 	)
 
+	// Validate and check for conflicts before saving the app, so a bad request leaves no orphan app behind.
+	if err := validateRegistration(admin_mail, admin_name, admin_pass); err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	exists, err := a.apps.AppExists(ctx, app_name)
+	if err != nil {
+		log.Error("failed to check if app exists", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	if exists {
+		log.Info("app creation failed: app already exists")
+		return 0, fmt.Errorf("%s: %w", op, services.ErrAppAlreadyExists)
+	}
+
+	_, err = a.users.User(ctx, admin_mail)
+	if err == nil {
+		log.Info("app creation failed: admin user already exists")
+		return 0, fmt.Errorf("%s: %w", op, services.ErrUserAlreadyExists)
+	}
+	if !errors.Is(err, storage.ErrEntityNotFound) {
+		log.Error("failed to check if admin user exists", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
 	secret, err := RandomString(32)
 	if err != nil {
 		log.Error("failed to generate app secret", slog.Any("err", err))
@@ -287,8 +315,11 @@ func (a *Auth) CreateApp(ctx context.Context, app_name string, admin_mail string
 	}
 
 	app, err := a.apps.SaveApp(ctx, app_name, secret)
-
 	if err != nil {
+		if errors.Is(err, storage.ErrEntityExists) {
+			log.Info("app creation failed: app already exists")
+			return 0, fmt.Errorf("%s: %w", op, services.ErrAppAlreadyExists)
+		}
 		log.Error("failed to create app", slog.Any("err", err))
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
