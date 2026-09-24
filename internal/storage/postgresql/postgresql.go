@@ -65,6 +65,21 @@ func (r *Repository) App(ctx context.Context, appId int64) (models.App, error) {
 	return app, nil
 }
 
+func (r *Repository) SaveApp(ctx context.Context, name string, secret string) (int64, error) {
+	const op = "postgresql.Repository.SaveApp"
+	query := "INSERT INTO apps (name, secret) VALUES ($1, $2) RETURNING id"
+
+	var id int64
+	if err := r.db.QueryRowContext(ctx, query, name, secret).Scan(&id); err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == uniqueViolationCode {
+			return 0, fmt.Errorf("%s: %w", op, storage.ErrEntityExists)
+		}
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	return id, nil
+}
+
 func (r *Repository) Permission(ctx context.Context, userId int64, appId int64) (models.Permission, error) {
 	const op = "postgresql.Repository.Permission"
 	query := "SELECT permission FROM permissions WHERE user_id = $1 AND app_id = $2"

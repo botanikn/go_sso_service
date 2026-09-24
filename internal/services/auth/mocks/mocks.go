@@ -28,6 +28,11 @@ func (m *Storage) App(ctx context.Context, appId int64) (models.App, error) {
 	return args.Get(0).(models.App), args.Error(1)
 }
 
+func (m *Storage) SaveApp(ctx context.Context, name string, secret string) (int64, error) {
+	args := m.Called(ctx, name, secret)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func (m *Storage) Permission(ctx context.Context, userId int64, appId int64) (models.Permission, error) {
 	args := m.Called(ctx, userId, appId)
 	return args.Get(0).(models.Permission), args.Error(1)

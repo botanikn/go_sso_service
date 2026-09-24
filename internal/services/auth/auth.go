@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/mail"
 	"sync"
 	"time"
@@ -40,6 +42,7 @@ type UserStorage interface {
 
 type AppProvider interface {
 	App(ctx context.Context, appId int64) (models.App, error)
+	SaveApp(ctx context.Context, name string, secret string) (int64, error)
 }
 
 type PermissionStorage interface {
@@ -267,6 +270,47 @@ func (a *Auth) UpdatePermission(
 	return nil
 }
 
+func (a *Auth) CreateApp(ctx context.Context, app_name string, admin_mail string, admin_name string, admin_pass string) (appId int64, err error) {
+	const op = "auth.CreateApp"
+
+	log := a.log.With(
+		slog.String("op", op),
+		slog.String("app_name", app_name),
+		slog.String("admin_mail", admin_mail),
+		slog.String("admin_name", admin_name),
+	)
+
+	secret, err := RandomString(32)
+	if err != nil {
+		log.Error("failed to generate app secret", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	app, err := a.apps.SaveApp(ctx, app_name, secret)
+
+	if err != nil {
+		log.Error("failed to create app", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("app created", slog.Int64("appId", app))
+
+	admin, err := a.Register(ctx, admin_mail, admin_name, admin_pass)
+	if err != nil {
+		log.Error("failed to create admin user", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	log.Info("admin user created", slog.Int64("userId", admin))
+
+	permission, err := a.permissions.EnsurePermission(ctx, admin, app, models.PermissionAdmin)
+	if err != nil {
+		log.Error("failed to ensure admin permission", slog.Any("err", err))
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	log.Info("admin permission ensured", slog.String("permission", string(permission)))
+	return app, nil
+}
+
 func (a *Auth) requireAdmin(ctx context.Context, actorId int64, appId int64) error {
 	permission, err := a.Permission(ctx, actorId, appId)
 	if err != nil {
@@ -306,4 +350,20 @@ func validateRegistration(email, username, password string) error {
 			minPasswordLength, maxPasswordLength)
 	}
 	return nil
+}
+
+func RandomString(length int) (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	result := make([]byte, length)
+
+	for i := range result {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", fmt.Errorf("generate random character: %w", err)
+		}
+
+		result[i] = alphabet[n.Int64()]
+	}
+
+	return string(result), nil
 }

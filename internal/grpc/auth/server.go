@@ -26,6 +26,7 @@ type AuthService interface {
 	Permission(ctx context.Context, userId int64, appId int64) (models.Permission, error)
 	UserPermission(ctx context.Context, actorId int64, userId int64, appId int64) (models.Permission, error)
 	UpdatePermission(ctx context.Context, actorId int64, userId int64, appId int64, permission models.Permission) error
+	CreateApp(ctx context.Context, app_name string, admin_mail string, admin_name string, admin_pass string) (appId int64, err error)
 }
 
 type serverAPI struct {
@@ -133,6 +134,22 @@ func (s *serverAPI) GetPermissionsByUserId(
 	}
 
 	return &ssov1.PermissionsByUserIdResponse{Permission: string(permission)}, nil
+}
+
+func (s *serverAPI) CreateApp(
+	ctx context.Context,
+	req *ssov1.CreateAppRequest,
+) (*ssov1.CreateAppResponse, error) {
+	if err := validateCreateAppRequest(req); err != nil {
+		return nil, err
+	}
+
+	appId, err := s.auth.CreateApp(ctx, req.GetAppName(), req.GetAdminMail(), req.GetAdminName(), req.GetAdminPass())
+	if err != nil {
+		return nil, toStatus(err)
+	}
+
+	return &ssov1.CreateAppResponse{AppId: appId}, nil
 }
 
 // authenticate validates the bearer token from request metadata and returns the caller's user ID.
@@ -256,6 +273,19 @@ func validateGetPermissionsByUserIdRequest(req *ssov1.PermissionsByUserIdRequest
 	}
 	if req.GetUserId() == emptyInteger {
 		return status.Error(codes.InvalidArgument, "user_id is required")
+	}
+	return nil
+}
+
+func validateCreateAppRequest(req *ssov1.CreateAppRequest) error {
+	if req.GetAppName() == "" {
+		return status.Error(codes.InvalidArgument, "app_name is required")
+	}
+	if req.GetAdminMail() == "" {
+		return status.Error(codes.InvalidArgument, "admin_mail is required")
+	}
+	if req.GetAdminPass() == "" {
+		return status.Error(codes.InvalidArgument, "admin_pass is required")
 	}
 	return nil
 }
