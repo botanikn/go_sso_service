@@ -5,32 +5,36 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
-
+	"net/mail"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/botanikn/go_sso_service/internal/domain/models"
+	"github.com/botanikn/go_sso_service/internal/lib/jwt_lib"
+	"github.com/botanikn/go_sso_service/internal/services"
 	"github.com/botanikn/go_sso_service/internal/storage"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	minPasswordLength = 8
+	maxPasswordLength = 72 // bcrypt ignores everything past 72 bytes
+	minUsernameLength = 3
+	maxUsernameLength = 50 // users.username is VARCHAR(50)
+)
+
 type Auth struct {
-	log                *slog.Logger
-	userSaver          UserSaver
-	userProvider       UserProvider
-	appProvider        AppProvider
-	permissionProvider PermissionProvider
-	PermissionCreator  PermissionCreator
-	PermissionUpdater  PermissionUpdater
-	tokenTTL           time.Duration
+	log           *slog.Logger
+	users         UserStorage
+	apps          AppProvider
+	permissions   PermissionStorage
+	tokenProvider TokenProvider
+	tokenTTL      time.Duration
 }
 
-type UserSaver interface {
+type UserStorage interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (userId int64, err error)
-}
-
-type UserProvider interface {
 	User(ctx context.Context, email string) (models.User, error)
 }
 
@@ -38,51 +42,45 @@ type AppProvider interface {
 	App(ctx context.Context, appId int64) (models.App, error)
 }
 
-type PermissionCreator interface {
-	CreatePermission(ctx context.Context, userId int64, appId int64, permission string) (bool, error)
+type PermissionStorage interface {
+	Permission(ctx context.Context, userId int64, appId int64) (models.Permission, error)
+	EnsurePermission(ctx context.Context, userId int64, appId int64, defaultPermission models.Permission) (models.Permission, error)
+	UpdatePermission(ctx context.Context, userId int64, appId int64, permission models.Permission) error
 }
 
-type PermissionUpdater interface {
-	UpdatePermission(ctx context.Context, userId int64, appId int64, permission string) error
-}
-
-type PermissionProvider interface {
-	Permission(ctx context.Context, userId int64, appId int64) (string, error)
-}
-
-var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidAppID       = errors.New("invalid app ID")
-	ErrUserExists         = errors.New("user already exists")
-)
-
-type PermissionResponse struct {
-	Validated bool
-	UserId    int64
+type TokenProvider interface {
+	NewToken(user models.User, app models.App, duration time.Duration) (string, error)
+	ParseToken(tokenString string, app models.App) (userId int64, err error)
 }
 
 // New returns a new instance of Auth service.
 func New(
 	log *slog.Logger,
-	userSaver UserSaver,
-	userProvider UserProvider,
-	appProvider AppProvider,
-	permissionProvider PermissionProvider,
-	PermissionCreator PermissionCreator,
-	PermissionUpdater PermissionUpdater,
+	users UserStorage,
+	apps AppProvider,
+	permissions PermissionStorage,
+	tokenProvider TokenProvider,
 	tokenTTL time.Duration,
 ) *Auth {
 	return &Auth{
-		log:                log,
-		userSaver:          userSaver,
-		userProvider:       userProvider,
-		appProvider:        appProvider,
-		permissionProvider: permissionProvider,
-		PermissionCreator:  PermissionCreator,
-		PermissionUpdater:  PermissionUpdater,
-		tokenTTL:           tokenTTL,
+		log:           log,
+		users:         users,
+		apps:          apps,
+		permissions:   permissions,
+		tokenProvider: tokenProvider,
+		tokenTTL:      tokenTTL,
 	}
 }
+
+// dummyPassHash is compared against when the user does not exist, so that
+// response time does not reveal whether an email is registered.
+var dummyPassHash = sync.OnceValue(func() []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+})
 
 // Login checks if user with credentials exists and returns JWT token if so.
 func (a *Auth) Login(
@@ -93,62 +91,48 @@ func (a *Auth) Login(
 ) (string, error) {
 	const op = "auth.Login"
 
-	log := a.log.With(
-		slog.String("op", op),
-		slog.String("email", email),
-		slog.Int64("appId", appId),
-	)
+	log := a.log.With(slog.String("op", op), slog.Int64("appId", appId))
 
-	log.Info("attempting to login")
-
-	user, err := a.userProvider.User(ctx, email)
+	app, err := a.app(ctx, appId)
 	if err != nil {
-		if errors.Is(err, storage.ErrUserNotFound) {
-			a.log.Warn("user not found", slog.String("error", err.Error()))
-
-			return "", fmt.Errorf("%s: %w", op, err)
-		}
-
-		a.log.Error("failed to get user", slog.String("error", err.Error()))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
+
+	user, err := a.users.User(ctx, email)
+	if err != nil {
+		if errors.Is(err, storage.ErrEntityNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyPassHash(), []byte(password))
+			log.Info("login failed: invalid credentials")
+			return "", fmt.Errorf("%s: %w", op, services.ErrInvalidCredentials)
+		}
+		log.Error("failed to get user", slog.Any("err", err))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	log = log.With(slog.Int64("userId", user.ID))
 
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
-		a.log.Info("invalid credentials for user", slog.String("error", err.Error()))
-		return "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+		log.Info("login failed: invalid credentials")
+		return "", fmt.Errorf("%s: %w", op, services.ErrInvalidCredentials)
 	}
 
-	app, err := a.appProvider.App(ctx, appId)
+	permission, err := a.permissions.EnsurePermission(ctx, user.ID, appId, models.PermissionUser)
 	if err != nil {
-		a.log.Error("failed to get app", slog.String("error", err.Error()))
+		log.Error("failed to ensure user permission", slog.Any("err", err))
 		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	if permission == models.PermissionBanned {
+		log.Info("login failed: user is banned")
+		return "", fmt.Errorf("%s: %w", op, services.ErrUserBanned)
 	}
 
-	userId, err := strconv.ParseInt(user.ID, 10, 64)
+	token, err := a.tokenProvider.NewToken(user, app, a.tokenTTL)
 	if err != nil {
-		a.log.Error("failed to parse user ID", slog.String("error", err.Error()))
-		return "", fmt.Errorf("%s: %w", op, err)
-	}
-	_, err = a.permissionProvider.Permission(ctx, userId, appId)
-	if errors.Is(err, storage.ErrNoPermissionFound) {
-		_, err = a.PermissionCreator.CreatePermission(ctx, userId, appId, "user")
-		if err != nil {
-			a.log.Error("failed to create permission", slog.String("error", err.Error()))
-			return "", fmt.Errorf("%s: %w", op, err)
-		}
-		a.log.Debug("permission was successfully made for user", slog.Int64("userId", userId), slog.Int64("appId", appId))
-	}
-	if err != nil {
-		a.log.Error("failed to get user permission", slog.String("error", err.Error()))
+		log.Error("failed to create token", slog.Any("err", err))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	token, err := a.NewToken(user, app, a.tokenTTL)
-	if err != nil {
-		log.Error("failed to create token", slog.String("error", err.Error()))
-		return "", fmt.Errorf("%s: %w", op, err)
-	}
-	log.Info("user logged in successfully")
+	log.Info("user logged in")
 	return token, nil
 }
 
@@ -161,180 +145,165 @@ func (a *Auth) Register(
 ) (int64, error) {
 	const op = "auth.Register"
 
-	log := a.log.With(
-		slog.String("op", op),
-		slog.String("email", email),
-	)
+	log := a.log.With(slog.String("op", op))
 
-	log.Info("registering user")
+	if err := validateRegistration(email, username, password); err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Error("failed to hash password", slog.String("error", err.Error()))
+		log.Error("failed to hash password", slog.Any("err", err))
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	userId, err := a.userSaver.SaveUser(ctx, email, username, passHash)
+	userId, err := a.users.SaveUser(ctx, email, username, passHash)
 	if err != nil {
-		if errors.Is(err, storage.ErrUserExists) {
-			log.Warn("user already exists", slog.String("error", err.Error()))
-			return 0, fmt.Errorf("%s: %w", op, ErrUserExists)
+		if errors.Is(err, storage.ErrEntityExists) {
+			log.Info("registration failed: user already exists")
+			return 0, fmt.Errorf("%s: %w", op, services.ErrUserAlreadyExists)
 		}
-		log.Error("failed to save user", slog.String("error", err.Error()))
+		log.Error("failed to save user", slog.Any("err", err))
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("user registered")
+	log.Info("user registered", slog.Int64("userId", userId))
 	return userId, nil
 }
 
-// CheckPermissions checks what permissions a user has for a given app.
-func (a *Auth) CheckPermissions(
-	ctx context.Context,
-	userId int64,
-	appId int64,
-	token string,
-) (string, error) {
-	const op = "auth.CheckPermissions"
+// ValidateToken verifies an access token issued for the app and returns the user ID it belongs to.
+func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int64) (int64, error) {
+	const op = "auth.ValidateToken"
 
-	log := a.log.With(
-		slog.String("op", op),
-		slog.Int64("userId", userId),
-		slog.Int64("appId", appId),
-	)
+	log := a.log.With(slog.String("op", op), slog.Int64("appId", appId))
 
-	log.Info("checking user's permissions")
-
-	permission, err := a.permissionProvider.Permission(ctx, userId, appId)
+	app, err := a.app(ctx, appId)
 	if err != nil {
-		if errors.Is(err, storage.ErrAppNotFound) {
-			log.Warn("app not found", slog.String("error", err.Error()))
-			return "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	userId, err := a.tokenProvider.ParseToken(tokenString, app)
+	if err != nil {
+		log.Info("token rejected", slog.Any("err", err))
+		if errors.Is(err, jwt_lib.ErrTokenExpired) {
+			return 0, fmt.Errorf("%s: %w", op, services.ErrTokenExpired)
 		}
-		log.Error("failed to check user's permissions", slog.String("error", err.Error()))
+		return 0, fmt.Errorf("%s: %w", op, services.ErrInvalidToken)
+	}
+
+	return userId, nil
+}
+
+// Permission returns what permission a user has for a given app.
+func (a *Auth) Permission(ctx context.Context, userId int64, appId int64) (models.Permission, error) {
+	const op = "auth.Permission"
+
+	permission, err := a.permissions.Permission(ctx, userId, appId)
+	if err != nil {
+		if errors.Is(err, storage.ErrEntityNotFound) {
+			return "", fmt.Errorf("%s: %w", op, services.ErrPermissionDoesNotExist)
+		}
+		a.log.Error("failed to get permission",
+			slog.String("op", op),
+			slog.Int64("userId", userId),
+			slog.Int64("appId", appId),
+			slog.Any("err", err))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("checked user's permissions", slog.String("permission", permission))
 	return permission, nil
 }
 
-func (a *Auth) UpdatePermissions(
+// UserPermission returns the permission of userId in the app. Only app admins may call it.
+func (a *Auth) UserPermission(ctx context.Context, actorId int64, userId int64, appId int64) (models.Permission, error) {
+	const op = "auth.UserPermission"
+
+	if err := a.requireAdmin(ctx, actorId, appId); err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	permission, err := a.Permission(ctx, userId, appId)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	return permission, nil
+}
+
+// UpdatePermission sets the permission of userId in the app. Only app admins may call it.
+func (a *Auth) UpdatePermission(
 	ctx context.Context,
+	actorId int64,
 	userId int64,
 	appId int64,
-	permission string,
+	permission models.Permission,
 ) error {
-	const op = "auth.UpdatePermissions"
+	const op = "auth.UpdatePermission"
+
 	log := a.log.With(
 		slog.String("op", op),
+		slog.Int64("actorId", actorId),
 		slog.Int64("userId", userId),
 		slog.Int64("appId", appId),
-		slog.String("permission", permission),
+		slog.String("permission", string(permission)),
 	)
 
-	log.Info("updating user's permissions")
+	if !permission.IsValid() {
+		return fmt.Errorf("%s: %w", op, services.InvalidArgument("unknown permission %q", permission))
+	}
 
-	err := a.PermissionUpdater.UpdatePermission(ctx, userId, appId, permission)
-	if err != nil {
-		log.Error("failed to update user's permissions", slog.String("error", err.Error()))
+	if err := a.requireAdmin(ctx, actorId, appId); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("user's permissions updated successfully")
+	if err := a.permissions.UpdatePermission(ctx, userId, appId, permission); err != nil {
+		if errors.Is(err, storage.ErrEntityNotFound) {
+			return fmt.Errorf("%s: %w", op, services.ErrPermissionDoesNotExist)
+		}
+		log.Error("failed to update permission", slog.Any("err", err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("permission updated")
 	return nil
 }
 
-func (a *Auth) NewToken(user models.User, app models.App, duration time.Duration) (string, error) {
-	if duration <= 0 {
-		return "", errors.New("duration must be positive")
-	}
-	if app.Secret == "" {
-		return "", errors.New("app secret is required")
-	}
-
-	claims := jwt.MapClaims{
-		"uid":    user.ID,
-		"email":  user.Email,
-		"exp":    time.Now().Add(duration).Unix(),
-		"app_id": app.ID,
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(app.Secret))
+func (a *Auth) requireAdmin(ctx context.Context, actorId int64, appId int64) error {
+	permission, err := a.Permission(ctx, actorId, appId)
 	if err != nil {
-		return "", err
+		if errors.Is(err, services.ErrPermissionDoesNotExist) {
+			return services.ErrForbidden
+		}
+		return err
 	}
-
-	return tokenString, nil
+	if permission != models.PermissionAdmin {
+		return services.ErrForbidden
+	}
+	return nil
 }
 
-func (a *Auth) ValidateToken(ctx context.Context, tokenString string, appId int64) (PermissionResponse, error) {
-	const op = "auth.ValidateToken"
-
-	app, err := a.appProvider.App(ctx, appId)
+func (a *Auth) app(ctx context.Context, appId int64) (models.App, error) {
+	app, err := a.apps.App(ctx, appId)
 	if err != nil {
-		a.log.Error("failed to find app",
-			slog.String("op", op),
-			slog.String("error", err.Error()),
-			slog.Int64("appId", appId))
-		return PermissionResponse{}, fmt.Errorf("%s: %w", op, err)
-	}
-
-	mapClaims := jwt.MapClaims{}
-	secret := app.Secret // Копируем для безопасности
-
-	_, err = jwt.ParseWithClaims(tokenString, mapClaims, func(token *jwt.Token) (interface{}, error) {
-		// Проверяем алгоритм подписи
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%s: unexpected signing method: %v", op, token.Header["alg"])
+		if errors.Is(err, storage.ErrEntityNotFound) {
+			return models.App{}, services.ErrAppDoesNotExist
 		}
-		return []byte(secret), nil
-	})
-
-	if err != nil {
-		a.log.Error("failed to parse token",
-			slog.String("op", op),
-			slog.String("error", err.Error()))
-		return PermissionResponse{}, fmt.Errorf("%s: %w", op, err)
+		a.log.Error("failed to get app", slog.Int64("appId", appId), slog.Any("err", err))
+		return models.App{}, err
 	}
+	return app, nil
+}
 
-	// Проверка exp
-	if exp, ok := mapClaims["exp"].(float64); ok {
-		expTime := time.Unix(int64(exp), 0)
-		if expTime.Before(time.Now()) {
-			a.log.Info("token has expired",
-				slog.String("op", op),
-				slog.Time("exp", expTime))
-			return PermissionResponse{}, jwt.ErrTokenExpired
-		}
+func validateRegistration(email, username, password string) error {
+	if addr, err := mail.ParseAddress(email); err != nil || addr.Address != email {
+		return services.InvalidArgument("invalid email")
 	}
-
-	// Проверка обязательных claims
-	uidRaw, ok := mapClaims["uid"]
-	if !ok {
-		return PermissionResponse{}, fmt.Errorf("%s: %w", op, jwt.ErrTokenMalformed)
+	if n := utf8.RuneCountInString(username); n < minUsernameLength || n > maxUsernameLength {
+		return services.InvalidArgument("username must be %d to %d characters long",
+			minUsernameLength, maxUsernameLength)
 	}
-
-	var userId int64
-	switch v := uidRaw.(type) {
-	case string:
-		userId, err = strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			return PermissionResponse{}, fmt.Errorf("%s: failed to parse user ID: %w", op, err)
-		}
-	case float64:
-		userId = int64(v)
-	case int64:
-		userId = v
-	case int:
-		userId = int64(v)
-	default:
-		return PermissionResponse{}, fmt.Errorf("%s: invalid user ID type: %T", op, uidRaw)
+	if n := len(password); n < minPasswordLength || n > maxPasswordLength {
+		return services.InvalidArgument("password must be %d to %d bytes long",
+			minPasswordLength, maxPasswordLength)
 	}
-
-	return PermissionResponse{
-		Validated: true,
-		UserId:    userId,
-	}, nil
+	return nil
 }

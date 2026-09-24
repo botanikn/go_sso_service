@@ -1,70 +1,57 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/botanikn/go_sso_service/internal/app"
-
 	"github.com/botanikn/go_sso_service/internal/config"
 )
 
 func main() {
-
 	cfg := config.MustLoad()
 
-	log := setupLogger(cfg.GetEnv())
+	log := setupLogger(cfg.Env)
+
+	log.Debug("configuration loaded", slog.Any("config", cfg))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	application, err := app.New(ctx, log, cfg)
+	if err != nil {
+		log.Error("failed to initialize application", slog.Any("err", err))
+		os.Exit(1)
+	}
 
 	log.Info("SSO Service started", slog.Int("port", cfg.GRPC.Port))
 
-	log.Debug("Configuration loaded", slog.Any("config", cfg))
+	runErr := make(chan error, 1)
+	go func() { runErr <- application.Run() }()
 
-	application := app.New(
-		log,
-		cfg.GRPC.Port,
-		&cfg.DbConfig,
-		cfg.GRPC.Timeout,
-	)
+	select {
+	case <-ctx.Done():
+		log.Info("SSO Service stopping by signal")
+	case err := <-runErr:
+		if err != nil {
+			log.Error("gRPC server failed", slog.Any("err", err))
+		}
+	}
 
-	go application.MustRun()
-
-	// TODO: throw througth context with singal
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-
-	syscallSignal := <-stop
-	log.Info("SSO Service stopping by", slog.String("signal", syscallSignal.String()))
 	application.Stop()
-
 	log.Info("SSO Service stopped")
-
 }
 
 func setupLogger(env string) *slog.Logger {
-	var log *slog.Logger
 	switch env {
 	case config.EnvLocal:
-		log = slog.New(slog.NewTextHandler(
-			os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelDebug},
-		))
+		return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	case config.EnvDev:
-		log = slog.New(slog.NewJSONHandler(
-			os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelDebug},
-		))
-	case config.EnvProd:
-		log = slog.New(slog.NewJSONHandler(
-			os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelInfo},
-		))
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	default:
-		log = slog.New(slog.NewJSONHandler(
-			os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelDebug},
-		))
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
-	return log
 }

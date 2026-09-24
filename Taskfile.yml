@@ -2,20 +2,28 @@
 
 version: '3'
 
+dotenv: ['.env']
+
 vars:
   migrations_path: ./migrations
 
+env:
+  SSO_CONFIG_PATH: ./config/config.yaml
+
 tasks:
   migrationsUp:
-    env:
-      SSO_CONFIG_PATH: ./config/config.yaml
     cmds:
-      - go run ./cmd/migrator --migrationsPath={{.migrations_path}} 
+      - go run ./cmd/migrator --migrationsPath={{.migrations_path}}
+    silent: true
+  migrationsDown:
+    cmds:
+      - go run ./cmd/migrator --migrationsPath={{.migrations_path}} --direction=down
     silent: true
   ssoServiceUp:
-    env:
-      SSO_CONFIG_PATH: ./config/config.yaml
     cmds:
       - go run ./cmd/sso
     deps:
       - task: migrationsUp
+  test:
+    cmds:
+      - go test ./...

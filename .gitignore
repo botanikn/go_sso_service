@@ -1,0 +1,9 @@
+# Binaries
+/main
+/sso
+/migrator
+*.exe
+
+# Local secrets
+.env
+certs/

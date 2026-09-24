@@ -1,38 +1,47 @@
-version: "3.9"
-
 services:
   sso_postgres:
     image: postgres:16
     container_name: sso-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: sso_user
-      POSTGRES_PASSWORD: sso_password
-      POSTGRES_DB: sso_db
+      POSTGRES_USER: ${SSO_DB_USER:?set in .env}
+      POSTGRES_PASSWORD: ${SSO_DB_PASSWORD:?set in .env}
+      POSTGRES_DB: ${SSO_DB_NAME:?set in .env}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sso_user -d sso_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
-  sso_service:
+
+  sso_migrator:
     build:
       context: .
-      dockerfile: ./Dockerfile
-    container_name: sso-service
-    restart: unless-stopped
-    ports:
-      - "50051:50051"
+    env_file: .env
+    environment:
+      SSO_DB_HOST: sso_postgres
+    entrypoint: ["/app/migrator", "--migrationsPath=/app/migrations"]
     depends_on:
       sso_postgres:
         condition: service_healthy
-    volumes:
-      - ./:/app
-    command: ["sh", "-c", "go run ./cmd/migrator && go run ./cmd/sso"]
+
+  sso_service:
+    build:
+      context: .
+    container_name: sso-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SSO_DB_HOST: sso_postgres
+    ports:
+      - "50051:50051"
+    depends_on:
+      sso_migrator:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

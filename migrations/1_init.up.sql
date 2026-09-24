@@ -17,7 +17,9 @@ CREATE TYPE permission_type AS ENUM ('banned', 'user', 'admin');
 
 CREATE TABLE permissions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    app_id INTEGER REFERENCES apps(id) ON DELETE CASCADE,
-    permission permission_type NOT NULL DEFAULT 'user'
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    app_id INTEGER REFERENCES apps(id) ON DELETE CASCADE NOT NULL,
+    permission permission_type NOT NULL DEFAULT 'user',
+
+    CONSTRAINT unique_user_app UNIQUE (user_id, app_id)
 );
