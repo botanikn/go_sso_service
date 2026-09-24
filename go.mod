@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.9
 
 require (
-	github.com/botanikn/protos v0.0.12
+	github.com/botanikn/protos v0.0.13-0.20260924092321-2959888cc5e1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
